@@ -1,0 +1,6 @@
+*.pkl !text !filter !merge !diff
+*.onnx !text !filter !merge !diff
+*.bin !text !filter !merge !diff
+*.pt !text !filter !merge !diff
+*.job !text !filter !merge !diff
+.venv310/** !text !filter !merge !diff

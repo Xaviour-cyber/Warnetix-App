@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+pandas
+scikit-learn
+plotly
+streamlit
+python-multipart
+cryptography
+matplotlib
+numpy
