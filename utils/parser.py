@@ -1,29 +1,73 @@
-# utils/parser.py
-
+import os
 import pandas as pd
-import re
-
+import json
 
 def parse_log(file_path):
     """
-    Fungsi untuk membaca file log dan mengubahnya menjadi DataFrame
-    Format log yang umum: [timestamp] LEVEL message
-    Contoh:
-    [2025-08-05 20:22:00] INFO User X login from 192.168.1.2
+    Parse berbagai jenis file log (.csv, .txt, .log, .json, .exe (dummy warning)) menjadi DataFrame.
     """
-    with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
-        lines = f.readlines()
+    ext = os.path.splitext(file_path)[-1].lower()
 
-    log_entries = []
-    for line in lines:
-        match = re.match(r"\[(.*?)\]\s+(\w+)\s+(.*)", line)
-        if match:
-            timestamp, level, message = match.groups()
-            log_entries.append({
-                'timestamp': timestamp,
-                'level': level,
-                'message': message
-            })
+    if ext == '.csv':
+        return pd.read_csv(file_path)
+    
+    elif ext in ['.txt', '.log']:
+        with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+            lines = f.readlines()
+        return pd.DataFrame({'line': [line.strip() for line in lines]})
+    
+    elif ext == '.json':
+        with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+            data = json.load(f)
+        if isinstance(data, list):
+            return pd.DataFrame(data)
+        elif isinstance(data, dict):
+            return pd.json_normalize(data)
+        else:
+            raise ValueError("Format JSON tidak dikenali.")
+    
+    elif ext == '.exe':
+        # Warning: EXE bukan file log yang bisa diparse sebagai teks
+        raise ValueError("File .exe tidak bisa dianalisis langsung. Silakan unggah file log atau data dalam format teks.")
+    
+    else:
+        raise ValueError(f"Format file {ext} tidak didukung.")
 
-    df = pd.DataFrame(log_entries)
-    return df
+# Simpan ke file parser.py
+parser_code = '''\
+import os
+import pandas as pd
+import json
+
+def parse_log(file_path):
+    ext = os.path.splitext(file_path)[-1].lower()
+
+    if ext == '.csv':
+        return pd.read_csv(file_path)
+
+    elif ext in ['.txt', '.log']:
+        with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+            lines = f.readlines()
+        return pd.DataFrame({'line': [line.strip() for line in lines]})
+
+    elif ext == '.json':
+        with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+            data = json.load(f)
+        if isinstance(data, list):
+            return pd.DataFrame(data)
+        elif isinstance(data, dict):
+            return pd.json_normalize(data)
+        else:
+            raise ValueError("Format JSON tidak dikenali.")
+
+    elif ext == '.exe':
+        raise ValueError("File .exe tidak bisa dianalisis langsung. Silakan unggah file log atau data dalam format teks.")
+
+    else:
+        raise ValueError(f"Format file {ext} tidak didukung.")
+'''
+
+with open('/mnt/data/parser.py', 'w', encoding='utf-8') as f:
+    f.write(parser_code)
+
+"/mnt/data/parser.py"

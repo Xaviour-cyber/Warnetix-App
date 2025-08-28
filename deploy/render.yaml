@@ -1,0 +1,100 @@
+# deploy/render.yaml
+services:
+  # === BACKEND (FastAPI) ===
+  - type: web
+    name: warnetix-backend
+    runtime: docker            # <- ganti dari "env: docker"
+    plan: starter
+    autoDeploy: true
+    healthCheckPath: /health
+    dockerContext: .
+    dockerfilePath: deploy/Dockerfile.backend
+    envVars:
+      - key: ENV
+        value: production
+      - key: SECRET_KEY
+        generateValue: true
+      # Redis dari Key Value service (host & port)
+      - key: REDIS_HOST
+        fromService:
+          type: keyvalue
+          name: warnetix-kv
+          property: host
+      - key: REDIS_PORT
+        fromService:
+          type: keyvalue
+          name: warnetix-kv
+          property: port
+      # S3 & lain-lain isi manual di dashboard (sync:false akan minta input saat create Blueprint)
+      - key: S3_ENDPOINT
+        sync: false
+      - key: S3_BUCKET_UPLOADS
+        sync: false
+      - key: S3_BUCKET_QUAR
+        sync: false
+      - key: S3_ACCESS_KEY_ID
+        sync: false
+      - key: S3_SECRET_ACCESS_KEY
+        sync: false
+      - key: S3_REGION
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false
+      - key: SCAN_MAX_MB
+        value: "100"
+      - key: POLICY_DEFAULT
+        value: simulate
+
+  # === WORKER (job antrian scan) ===
+  - type: worker
+    name: warnetix-worker
+    runtime: docker
+    autoDeploy: true
+    dockerContext: .
+    dockerfilePath: deploy/Dockerfile.worker
+    envVars:
+      - key: ENV
+        value: production
+      - key: REDIS_HOST
+        fromService:
+          type: keyvalue
+          name: warnetix-kv
+          property: host
+      - key: REDIS_PORT
+        fromService:
+          type: keyvalue
+          name: warnetix-kv
+          property: port
+      - key: S3_ENDPOINT
+        sync: false
+      - key: S3_BUCKET_UPLOADS
+        sync: false
+      - key: S3_BUCKET_QUAR
+        sync: false
+      - key: S3_ACCESS_KEY_ID
+        sync: false
+      - key: S3_SECRET_ACCESS_KEY
+        sync: false
+      - key: S3_REGION
+        sync: false
+      - key: SCAN_MAX_MB
+        value: "100"
+
+  # === REDIS (Render Key Value) ===
+  - type: keyvalue
+    name: warnetix-kv
+    # Wajib ada ipAllowList. Kosong = tidak ada akses publik (private only).
+    ipAllowList: []
+    plan: starter
+
+  # === FRONTEND (Nginx static dari Dockerfile) ===
+  - type: web
+    name: warnetix-frontend
+    runtime: docker
+    plan: starter
+    autoDeploy: true
+    dockerContext: .
+    dockerfilePath: deploy/Dockerfile.frontend
+    envVars:
+      - key: ENV
+        value: production

@@ -1,0 +1,90 @@
+{
+  "name": "warnetix_ransomware_signatures_v2",
+  "version": "2025.08.09",
+  "description": "Comprehensive ransomware detection signature database for Warnetix. Includes multi-hash signatures, keywords, filename patterns, suspicious extensions, entropy threshold, and behavior indicators.",
+  "last_update": "2025-08-09T00:00:00Z",
+  "threat_category": "Ransomware",
+  "severity_level": "Critical",
+  "intel_source": [
+    "Warnetix Threat Lab",
+    "Open Threat Exchange (OTX)",
+    "VirusTotal Intelligence",
+    "MalwareBazaar IOC Feed"
+  ],
+  "signatures": [
+    {
+      "name": "SampleRansom_Test1",
+      "hash_sha256": "f4c3a0e657b31c4a5e6a50142b3f9f0bdbecb17d3ad4bc3f87cf2c2f55c0f1d4",
+      "hash_sha1": "6c7f2e67b9269b4a94dbf32d7fa54c6a3cbbaf7b",
+      "hash_md5": "8d777f385d3dfec8815d20f7496026dc",
+      "size_kb": 256,
+      "behavior": [
+        "Mass file rename",
+        "Encrypt files with unknown key",
+        "Drop ransom note",
+        "Terminate backup services"
+      ]
+    },
+    {
+      "name": "SampleRansom_Test2",
+      "hash_sha256": "97a7d0f8fbcf96a6f1a3390d83f52a7b45c6f8cbf1e0f786e2d4a97acbe76a0e",
+      "hash_sha1": "aa3ffb0c5c1e58a6545dbff1791cc90d2ac75a8b",
+      "hash_md5": "5d41402abc4b2a76b9719d911017c592",
+      "size_kb": 1024,
+      "behavior": [
+        "Disable system restore",
+        "Modify registry for persistence",
+        "Encrypt network drives",
+        "Contact external C2 server"
+      ]
+    }
+  ],
+  "keywords": [
+    "_encrypted",
+    ".locked",
+    "_encrypt",
+    "ransom",
+    "decrypt_instructions",
+    "readme_decrypt",
+    "HOW_TO_DECRYPT",
+    "ENCRYPTED_BY",
+    "PAYMENT_INSTRUCTIONS",
+    "RECOVER_FILES",
+    "FILES_ENCRYPTED"
+  ],
+  "filename_patterns": [
+    "*readme.txt",
+    "*HOW_TO_DECRYPT*",
+    "*_HELP_*",
+    "*DECRYPT*",
+    "*RECOVER*",
+    "*RESTORE_FILES*"
+  ],
+  "suspicious_extensions": [
+    ".encrypted",
+    ".locked",
+    ".crypt",
+    ".enc",
+    ".cry",
+    ".pay",
+    ".cryp",
+    ".crypted",
+    ".locky",
+    ".cerber",
+    ".darkside"
+  ],
+  "entropy_threshold": 7.5,
+  "file_size_range_kb": {
+    "min": 10,
+    "max": 524288
+  },
+  "behavior_indicators": [
+    "Mass file rename",
+    "File content entropy above threshold",
+    "Unusual encryption API calls",
+    "Multiple file write operations in <5s",
+    "Creation of ransom note files",
+    "Suspicious registry modifications"
+  ],
+  "usage_notes": "Update signatures daily from intel sources. Use in combination with anomaly detection & behavioral analysis for maximum detection accuracy."
+}
