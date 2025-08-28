@@ -1,0 +1,291 @@
+# warnetix_engine.yaml
+version: 1
+engine:
+  temp_dir: "C:/ProgramData/Warnetix/tmp"
+  quarantine_dir: "C:/ProgramData/Warnetix/quarantine"
+  logs_dir: "C:/ProgramData/Warnetix/logs"
+  # policy minimal global (bisa dioverride per-format)
+  policy_min: medium
+  # peta level -> aksi default (fallback)
+  action_matrix:
+    low: simulate
+    medium: rename
+    high: quarantine
+    critical: delete
+
+limits:
+  recursion:
+    max_depth: 4           # batasi nested archive
+    max_children_per_node: 20000
+  size:
+    max_archive_size_bytes: 1073741824        # 1 GiB
+    max_total_unpacked_bytes: 4294967296      # 4 GiB budget per root scan
+    max_single_file_bytes: 536870912          # 512 MiB per file
+  zip_bomb:
+    max_expansion_ratio: 1000                 # unpacked_size / archive_size
+  timeouts:
+    per_archive_ms: 20000                     # 20 detik/arsip
+    per_file_ms: 5000                         # 5 detik/file
+  fs_safety:
+    allow_symlink: false
+    prevent_path_traversal: true
+    allow_absolute_paths: false
+    follow_junctions: false
+
+routing:
+  # urutan deteksi: MAGIC lebih kuat daripada EXT
+  detectors_priority: [magic, ext]
+
+handlers:
+  # definisi modul yang tersedia
+  zip:
+    type: builtin
+    lib: libzip
+    supports_streaming: true
+  seven_zip:
+    type: builtin
+    lib: 7z_sdk
+    supports_streaming: true
+    enable_rar: false        # true jika kamu bundle UnRAR sesuai lisensi
+  pe:
+    type: builtin
+    lib: pe_parser
+  pdf:
+    type: plugin
+    lib: qpdf
+  ole_cfb:
+    type: plugin
+    lib: libolecf
+  pst_store:
+    type: plugin
+    lib: libpff
+  matroska:
+    type: plugin
+    lib: mkv_reader
+  image_meta:
+    type: plugin
+    lib: exiftool_wrapper
+  plaintext:
+    type: builtin
+    lib: text_scanner
+
+mapping:
+  # ===== MAGIC BYTES (signature) → handler =====
+  magic:
+    # ZIP family (APK/JAR/DOCX/…)
+    - sig: "50 4B 03 04"
+      handler: zip
+      note: ZIP local file header
+    - sig: "50 4B 05 06"
+      handler: zip
+      note: ZIP empty archive
+    - sig: "50 4B 07 08"
+      handler: zip
+      note: ZIP spanned/sfx
+    # 7z
+    - sig: "37 7A BC AF 27 1C"
+      handler: seven_zip
+    # RAR (opsional)
+    - sig: "52 61 72 21 1A 07 00"
+      handler: seven_zip
+      require: enable_rar
+      note: RAR4
+    - sig: "52 61 72 21 1A 07 01 00"
+      handler: seven_zip
+      require: enable_rar
+      note: RAR5
+    # TAR (heuristic, biasanya tanpa magic kuat) → ditangani via ekstensi; ini cadangan
+    # PDF
+    - sig: "25 50 44 46"
+      handler: pdf
+    # MSI/CFB/OLE
+    - sig: "D0 CF 11 E0 A1 B1 1A E1"
+      handler: ole_cfb
+      note: Compound File Binary (doc/xls/ppt lama, msi, msg)
+    # ELF
+    - sig: "7F 45 4C 46"
+      handler: plaintext   # diarahkan ke scanner biner (di sini placeholder), bisa “elf” handler
+    # Mach-O
+    - sig: "FE ED FA CE"
+      handler: plaintext   # ganti ke mach_o handler jika tersedia
+    - sig: "FE ED FA CF"
+      handler: plaintext
+    - sig: "CF FA ED FE"
+      handler: plaintext
+    # PNG
+    - sig: "89 50 4E 47 0D 0A 1A 0A"
+      handler: image_meta
+    # JPEG
+    - sig: "FF D8 FF"
+      handler: image_meta
+    # Matroska (MKV/WebM)
+    - sig: "1A 45 DF A3"
+      handler: matroska
+
+  # ===== EKSTENSI → handler =====
+  ext:
+    # ZIP family & turunan
+    zip: zip
+    apk: zip
+    aab: zip
+    jar: zip
+    war: zip
+    ear: zip
+    aar: zip
+    ipa: zip
+    docx: zip
+    xlsx: zip
+    pptx: zip
+    odt: zip
+    ods: zip
+    odp: zip
+    vsix: zip
+    xpi: zip
+    crx: zip
+    nupkg: zip
+    whl: zip
+    gem: zip
+    crate: zip
+    appx: zip
+    msix: zip
+    xapk: zip
+    msixbundle: zip
+    appxbundle: zip
+
+    # 7z & arsip lain
+    "7z": seven_zip
+    rar: seven_zip
+    tar: seven_zip
+    gz: seven_zip
+    bz2: seven_zip
+    xz: seven_zip
+    zst: seven_zip
+    tgz: seven_zip
+    tbz2: seven_zip
+    txz: seven_zip
+    tzst: seven_zip
+    cab: seven_zip
+    msi: seven_zip
+    iso: seven_zip
+    wim: seven_zip
+    dmg: seven_zip
+    deb: seven_zip
+    rpm: seven_zip
+    cpio: seven_zip
+    ar: seven_zip
+    chm: seven_zip
+    vhd: seven_zip
+    vhdx: seven_zip
+    vmdk: seven_zip
+    vdi: seven_zip
+    qcow: seven_zip
+    qcow2: seven_zip
+    snap: seven_zip
+    xar: seven_zip
+    xip: seven_zip
+
+    # Dokumen yang perlu parser khusus
+    pdf: pdf
+    rtf: ole_cfb
+    doc: ole_cfb
+    xls: ole_cfb
+    ppt: ole_cfb
+    docm: ole_cfb
+    xlsm: ole_cfb
+    pptm: ole_cfb
+    one: ole_cfb
+    onepkg: ole_cfb
+    vsd: ole_cfb
+    vsdx: zip
+    xps: zip
+    oxps: zip
+
+    # Email stores
+    eml: plaintext
+    emlx: plaintext
+    mbox: plaintext
+    msg: ole_cfb
+    pst: pst_store
+    ost: pst_store
+    olm: pst_store
+
+    # Media
+    mkv: matroska
+    webm: matroska
+    mp4: matroska
+    mov: matroska
+    avi: matroska
+
+    # Gambar
+    jpg: image_meta
+    jpeg: image_meta
+    png: image_meta
+    gif: image_meta
+    bmp: image_meta
+    tiff: image_meta
+    tif: image_meta
+    webp: image_meta
+    heic: image_meta
+    heif: image_meta
+    ico: image_meta
+
+    # Executable / script (ditangani engine biner utama milikmu)
+    exe: plaintext     # ganti ke handler "pe" jika sudah aktifkan modul PE
+    dll: plaintext
+    sys: plaintext
+    scr: plaintext
+    ocx: plaintext
+    cpl: plaintext
+    msi_exec: seven_zip
+    bat: plaintext
+    cmd: plaintext
+    ps1: plaintext
+    vbs: plaintext
+    js: plaintext
+    jse: plaintext
+    wsf: plaintext
+    hta: plaintext
+    reg: plaintext
+    inf: plaintext
+    lnk: plaintext
+    url: plaintext
+    desktop: plaintext
+
+policy:
+  # override per-format atau per-kategori untuk level minimal & aksi
+  overrides:
+    # Office dengan macro → ketat
+    - match: ["docm","xlsm","pptm","doc","xls","ppt"]
+      policy_min: high
+      on_detect:
+        macro_present: quarantine
+    # PDF dengan JS/embed file → ketat
+    - match: ["pdf"]
+      policy_min: high
+      on_detect:
+        has_javascript: quarantine
+        has_embedded_files: quarantine
+    # Executable biner → minimal medium
+    - match: ["exe","dll","sys","scr","ocx","cpl"]
+      policy_min: medium
+      on_detect:
+        high_entropy: quarantine
+        suspicious_imports: quarantine
+        packed_upx: rename
+    # Arsip bertingkat ekstrem → block
+    - match: ["zip","7z","rar","tar","gz","bz2","xz","zst","cab","msi"]
+      on_violation:
+        depth_exceeded: quarantine
+        ratio_exceeded: quarantine
+        size_budget_exceeded: quarantine
+  # daftar hitam global
+  blocklist_ext: ["ace","sitx","uha","kgb"]
+  # daftar putih global (opsional)
+  allowlist_ext: []
+
+telemetry:
+  jsonl_log: true
+  include_hashes: ["sha256","sha1","md5"]
+  include_lineage: true
+  include_timing: true
+  log_detections: true

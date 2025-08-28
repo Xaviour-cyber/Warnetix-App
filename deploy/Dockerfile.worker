@@ -1,0 +1,15 @@
+FROM python:3.11-slim
+WORKDIR /worker
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libmagic1 gcc build-essential && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt /worker/
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY backend /worker/backend
+
+# Misal worker celery/rq; contoh RQ:
+CMD ["sh","-c","python -m backend.worker_rq"]

@@ -1,0 +1,66 @@
+<!-- frontend/simple_upload.html -->
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Warnetix </title>
+  <style>
+    body { font-family: Arial, sans-serif; background:#111; color:#eee; display:flex; flex-direction:column; align-items:center; padding:40px;}
+    #drop { width:600px; height:200px; border:3px dashed #8B0000; border-radius:12px; display:flex; align-items:center; justify-content:center; color:#fff; background:#222;}
+    #drop.hover { background:#2a2a2a; }
+    button { background:#8B0000; color:#fff; border:none; padding:10px 18px; border-radius:8px; cursor:pointer; }
+    pre { max-width: 900px; white-space: pre-wrap; word-break:break-word; background:#000; padding:12px; border-radius:8px; margin-top:18px; color:#9cf;}
+  </style>
+</head>
+<body>
+  <h1>Warnetix - Upload & Scan Demo</h1>
+  <div id="drop">Drag & Drop file here or <input id="fileinput" type="file" /></div>
+  <div style="margin-top:12px;">
+    <label><input id="wait" type="checkbox" /> Wait for VirusTotal (blocking)</label>
+    <button id="uploadBtn">Upload & Scan</button>
+  </div>
+  <pre id="out">Result will appear here...</pre>
+
+<script>
+const drop = document.getElementById('drop');
+const fileInput = document.getElementById('fileinput');
+const uploadBtn = document.getElementById('uploadBtn');
+const out = document.getElementById('out');
+const waitCB = document.getElementById('wait');
+let currentFile = null;
+
+drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('hover'); });
+drop.addEventListener('dragleave', e => { drop.classList.remove('hover'); });
+drop.addEventListener('drop', e => {
+  e.preventDefault(); drop.classList.remove('hover');
+  const f = e.dataTransfer.files[0];
+  if (f) { currentFile = f; out.textContent = `Selected: ${f.name} (${f.size} bytes)`; }
+});
+
+fileInput.addEventListener('change', e => {
+  const f = e.target.files[0];
+  if (f) { currentFile = f; out.textContent = `Selected: ${f.name} (${f.size} bytes)`; }
+});
+
+uploadBtn.addEventListener('click', async () => {
+  if (!currentFile) { alert("Pilih file dulu (drag/drop)"); return; }
+  out.textContent = "Uploading & scanning...";
+  const fd = new FormData();
+  fd.append('file', currentFile, currentFile.name);
+  try {
+    const waitFlag = waitCB.checked ? '?wait=true' : '';
+    const resp = await fetch('/scan-file/' + waitFlag, {
+      method: 'POST',
+      body: fd
+    });
+    const data = await resp.json();
+    out.textContent = JSON.stringify(data, null, 2);
+  } catch (err) {
+    out.textContent = "ERROR: " + err;
+  }
+});
+const API = localStorage.getItem('API') || 'http://127.0.0.1:8000';
+const resp = await fetch(`${API}/scan-file${waitFlag}`, { method:'POST', body: fd });
+</script>
+</body>
+</html>

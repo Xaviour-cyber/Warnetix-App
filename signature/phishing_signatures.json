@@ -1,0 +1,97 @@
+{
+  "name": "warnetix_phishing_signatures_v1",
+  "version": "2025.08.09",
+  "description": "Comprehensive phishing detection signatures for Warnetix. Includes malicious domains, URL patterns, keywords, file hashes, IoCs, and behavior indicators.",
+  "last_update": "2025-08-09T00:00:00Z",
+  "threat_category": "Phishing",
+  "severity_level": "High",
+  "intel_source": [
+    "Warnetix Threat Lab",
+    "PhishTank Database",
+    "Google Safe Browsing API",
+    "OpenPhish",
+    "Abuse.ch URLhaus",
+    "Microsoft 365 Threat Intel"
+  ],
+  "malicious_domains": [
+    "paypal-login-secure.com",
+    "secure-update-banking.net",
+    "account-verification-microsoft.org",
+    "appleid-login-security.net",
+    "drive-google-file-share.com"
+  ],
+  "malicious_url_patterns": [
+    "https?://[a-z0-9\\-]+\\.(paypal|appleid|microsoft|bank)\\-[a-z0-9\\-]+\\.(com|net|org)",
+    "https?://secure\\-[a-z0-9]+\\.(login|verify|account)\\.(com|net)",
+    "https?://[a-z0-9\\-]+\\.websecure\\.(info|xyz)"
+  ],
+  "keywords": [
+    "verify your account",
+    "urgent action required",
+    "your account has been suspended",
+    "security alert",
+    "click the link below",
+    "password reset required",
+    "update your billing information",
+    "confirm your login",
+    "payment declined",
+    "new sign-in detected"
+  ],
+  "multilingual_keywords": {
+    "id": [
+      "akun anda telah diblokir",
+      "klik tautan di bawah ini",
+      "verifikasi akun anda",
+      "informasi pembayaran dibutuhkan",
+      "kata sandi telah direset"
+    ],
+    "es": [
+      "su cuenta ha sido suspendida",
+      "verifique su cuenta",
+      "restablecer su contraseña"
+    ]
+  },
+  "file_hashes": [
+    {
+      "type": "sha256",
+      "hash": "a8c88b6c8fd3a24e7b67b97e9c79dd4a43a6b5732b59c30e432dbf70c8f6f2f1",
+      "description": "Fake PayPal login HTML page"
+    },
+    {
+      "type": "sha256",
+      "hash": "c4e6f2b2b93f1a2a7e22e6343c124ad829fa4e2374cf3ec9de83b70ecb9812a7",
+      "description": "Phishing email attachment - Microsoft365 login"
+    }
+  ],
+  "ioc": {
+    "malicious_ips": [
+      "185.203.119.55",
+      "45.77.12.34"
+    ],
+    "asn": [
+      "AS12345 - Malicious Hosting Provider",
+      "AS67890 - Bulletproof Server"
+    ],
+    "malicious_mail_servers": [
+      "smtp.fakebank-secure.com",
+      "mail.security-update.net"
+    ]
+  },
+  "suspicious_attachments": [
+    ".html",
+    ".htm",
+    ".xlsm",
+    ".docm",
+    ".pdf",
+    ".js"
+  ],
+  "behavior_indicators": [
+    "HTML form posts credentials to external domain",
+    "Embedded JavaScript obfuscation",
+    "Base64 encoded HTML login forms",
+    "Links with hidden destination",
+    "Mismatch between displayed link and href target",
+    "Use of punycode in domain (IDN homograph attack)"
+  ],
+  "usage_notes": "Update signatures weekly. Match against domain, URL, keyword, hash, and behavior indicators for maximum phishing detection accuracy."
+}

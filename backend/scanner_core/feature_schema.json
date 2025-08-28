@@ -1,0 +1,36 @@
+{
+  "features": [
+    "size_kb",
+    "entropy",
+    "ext_exec_score",
+    "packed_score",
+    "n_suspicious_strings",
+    "imports_count",
+    "write_syscalls",
+    "rename_ops",
+    "macro_score",
+    "script_score",
+    "is_archive",
+    "compression_ratio",
+    "ext_entropy",
+    "network_contact",
+    "has_signature_hit"
+  ],
+  "description": {
+    "size_kb": "File size (KB)",
+    "entropy": "Shannon entropy (0..8)",
+    "ext_exec_score": "Executable likelihood (1 exe/dll, 0.4 script, 0 other)",
+    "packed_score": "Packing/obfuscation heuristic (0..1)",
+    "n_suspicious_strings": "Suspicious string count",
+    "imports_count": "Imported symbol count",
+    "write_syscalls": "Write-like/FS call count",
+    "rename_ops": "Rename ops (mass rename)",
+    "macro_score": "Office macro risk (0..1)",
+    "script_score": "Script risk (0..1)",
+    "is_archive": "Archive indicator (zip/7z/rar) 1/0",
+    "compression_ratio": "Compression ratio (0..1)",
+    "ext_entropy": "Entropy of neighbor extensions",
+    "network_contact": "Network contact evidence (0..1)",
+    "has_signature_hit": "Local signature hit 0/1"
+  }
+}
