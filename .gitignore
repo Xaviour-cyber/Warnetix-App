@@ -22,3 +22,6 @@ backend/data/output/
 backend/scanner_core/warnetix_scanner.db
 backend/scanner_core/models/anomaly_iforest.joblib
 
+
+!frontend/.env.production
+
