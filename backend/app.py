@@ -21,7 +21,16 @@ from backend.scanner_api import WarnetixScanner, build_threat_summary
 # Env & logging
 # ---------------------------------------------------------------------
 load_dotenv()
-colorama_init(autoreset=True)
+try:
+    from colorama import init as colorama_init, Fore, Style
+    colorama_init(autoreset=True)
+except Exception:
+    # fallback tanpa warna (supaya gak crash di server)
+    class _No:
+        def __getattr__(self, _): return ""
+    Fore = _No()
+    Style = _No()
+    def colorama_init(*_, **__): ...
 
 FRONTEND_ORIGIN = os.getenv("CORS_ORIGINS", "*")
 STORAGE_DIR = os.getenv("STORAGE_DIR", "./data/scan_targets")
