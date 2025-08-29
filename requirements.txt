@@ -1,0 +1,11 @@
+fastapi
+uvicorn[standard]
+python-multipart
+python-dotenv
+boto3
+sqlalchemy
+numpy
+scikit-learn
+python-magic-bin; platform_system == "Windows"
+python-magic; platform_system != "Windows"
+pydantic[email]
