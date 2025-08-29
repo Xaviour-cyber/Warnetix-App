@@ -133,9 +133,16 @@ except Exception:
 
 # watcher (folder monitoring)
 try:
-    from backend.watcher import FileWatcher
+    from backend.watcher import FileWatcher  # mode paket (uvicorn backend.app:app)
 except Exception:
-    from watcher import FileWatcher  # type: ignore
+    try:
+        from .watcher import FileWatcher  # dipanggil relatif kalau running dari modul yang sama
+    except Exception:
+        # Fallback stub: server API nggak butuh watcher -> jangan crash
+        class FileWatcher:  # type: ignore
+            def __init__(self, *args, **kwargs): ...
+            def start(self): ...
+            def stop(self): ...
 
 # EventsDB (kalau modul eksternal belum ada, fallback minimal SQLite)
 try:
