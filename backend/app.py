@@ -71,12 +71,14 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[FRONTEND_ORIGIN] if FRONTEND_ORIGIN != "*" else ["*"],
+    allow_origins=[
+        "https://warnetix-frontend.up.railway.app",  # ganti dgn domain FE kamu
+        "http://localhost:5173",                     # biar dev lokal tetap jalan
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
 # mount router tambahan
 app.include_router(aux_router)
 
