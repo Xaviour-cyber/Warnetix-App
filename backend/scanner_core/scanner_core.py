@@ -5,6 +5,12 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from typing import Optional, Dict, Any
 import mimetypes
+import os, json, uuid
+try:
+    import boto3  # type: ignore
+except Exception:
+    boto3 = None
+
 
 # try optional imports
 try:
@@ -387,3 +393,4 @@ class WarnetixScanner:
         src.rename(dest)
 
         return dest
+    

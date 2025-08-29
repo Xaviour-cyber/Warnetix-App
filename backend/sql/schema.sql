@@ -77,7 +77,6 @@ FROM events
 ORDER BY ts DESC;
 
 -- Timeseries per menit (bucket 60s)
--- Gunakan strftime untuk group by; konversi epoch->UTC lalu ke local di sisi frontend
 CREATE VIEW IF NOT EXISTS v_events_minute AS
 SELECT
   strftime('%Y-%m-%d %H:%M:00', datetime(ts, 'unixepoch')) AS bucket_minute,

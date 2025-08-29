@@ -13,3 +13,12 @@ Thumbs.db
 uploads/
 quarantine/
 .tmp/
+
+# runtime DB & model (ignore)
+*.db
+*.db-shm
+*.db-wal
+backend/data/output/
+backend/scanner_core/warnetix_scanner.db
+backend/scanner_core/models/anomaly_iforest.joblib
+

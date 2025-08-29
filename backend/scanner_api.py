@@ -1,6 +1,6 @@
 # scanner_api.py — Warnetix (FINAL w/ offline signature DB lookup + SSE signature_hit + AI loader in startup)
-
 from __future__ import annotations
+from typing import Any, Dict, List
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -1042,4 +1042,90 @@ async def scan_file_endpoint(
         "files": results,
     }
 
-# (opsional) scan-path masal bisa ditambahkan serupa, memanfaatkan JOBS_Q atau langsung iterative
+## --- build_threat_summary (kalau belum ada) ---
+try:
+    build_threat_summary  # type: ignore[name-defined]
+except NameError:
+    def build_threat_summary(items: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """
+        Ringkas status ancaman dari list hasil scan.
+        Menghitung: critical/high/medium/low/clean/error + total.
+        """
+        out = {"critical": 0, "high": 0, "medium": 0, "low": 0, "clean": 0, "error": 0, "total": len(items)}
+        for it in items or []:
+            # ambil field status/severity seandainya salah satunya ada
+            sev = (it.get("status") or it.get("severity") or "").lower()
+            if sev in out:
+                out[sev] += 1
+            elif sev in ("malicious",):
+                out["high"] += 1
+            elif sev in ("suspicious",):
+                out["medium"] += 1
+            elif sev in ("ok", "benign"):
+                out["clean"] += 1
+            elif sev == "error":
+                out["error"] += 1
+            else:
+                # fallback: pakai threat_score jika ada
+                ts = it.get("threat_score")
+                if isinstance(ts, (int, float)):
+                    if ts >= 80:
+                        out["high"] += 1
+                    elif ts >= 50:
+                        out["medium"] += 1
+                    elif ts > 0:
+                        out["low"] += 1
+                    else:
+                        out["clean"] += 1
+                else:
+                    out["low"] += 1
+        return out
+
+# --- WarnetixScanner ---
+try:
+    WarnetixScanner  # type: ignore[name-defined]
+except NameError:
+    class WarnetixScanner:
+        """
+        Shim kelas sederhana supaya app.py bisa memanggil .scan_path(path, opts).
+        Di dalamnya kita panggil fungsi yang sudah ada: scan_file_sync(...).
+        """
+        def __init__(self, logger=None):
+            self.logger = logger
+
+        def scan_path(self, path: str, opts: Dict[str, Any] | None = None) -> Dict[str, Any]:
+            opts = opts or {}
+            # flag VT dari opsi
+            vt_enabled = bool(opts.get("vt_enabled", True))
+            wait_for_vt = bool(opts.get("vt_upload_if_unknown", False)) if vt_enabled else False
+
+            # Pastikan DB core siap (fungsi2 ini sudah dipakai di modul ini)
+            try:
+                from backend.db import migrate
+                migrate()  # idempotent
+            except Exception as e:
+                if self.logger:
+                    self.logger.warning(f"DB core migrate warning: {e}")
+
+            # Panggil fungsi scan yang sudah ada di modul ini
+            if "scan_file_sync" not in globals():
+                raise RuntimeError("scanner_api.shim: fungsi scan_file_sync tidak ditemukan di backend/scanner_api.py")
+            result = globals()["scan_file_sync"](path, wait_for_vt=wait_for_vt)
+
+            # Pastikan ada beberapa field umum biar konsisten dengan app.py
+            result.setdefault("filename", result.get("filename") or (path.split("/")[-1] if "/" in path else path.split("\\")[-1]))
+            result.setdefault("status", result.get("status") or result.get("severity") or "low")
+            if "filesize" not in result and os.path.exists(path):
+                try:
+                    result["filesize"] = os.path.getsize(path)
+                except Exception:
+                    pass
+            if "id" not in result:
+                # fallback id
+                import hashlib
+                h = hashlib.sha256(result.get("sha256", "").encode() or path.encode())
+                result["id"] = h.hexdigest()[:16]
+            return result
+
+# Ekspor simbol agar bisa di-import oleh app.py
+__all__ = list(set(list(globals().get("__all__", [])) + ["WarnetixScanner", "build_threat_summary"]))
