@@ -1,8 +1,6 @@
 // Lightweight API wrapper utk Warnetix Frontend
-const API_BASE =
-  (typeof import.meta !== "undefined" && import.meta.env?.VITE_API_BASE) ||
-  window.__API_BASE__ ||
-  "http://127.0.0.1:8000";
+const API_BASE = import.meta.env.VITE_API_BASE || window.__API_BASE__ || '';
+export const api = (path) => `${API_BASE}${path}`;   // contoh pemakaian
 
 function qs(params = {}) {
   const s = new URLSearchParams();
