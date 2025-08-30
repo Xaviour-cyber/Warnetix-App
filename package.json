@@ -1,15 +1,20 @@
 ﻿{
-  "name": "warnetix-frontend-runner",
+  "name": "warnetix-frontend",
   "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "engines": { "node": ">=18" },
   "scripts": {
-    "prebuild": "cd frontend/public/src && if [ -f package-lock.json ]; then npm ci --no-audit --no-fund; else npm install --no-audit --no-fund; fi",
-    "build": "cd frontend/public/src && npx vite build",
+    "build": "vite build -c frontend/public/src/vite.config.js",
     "start": "serve -s frontend/public/src/dist -l ${PORT:-8080}"
   },
   "dependencies": {
-    "serve": "^14.2.1"
+    "react": "18.2.0",
+    "react-dom": "18.2.0",
+    "serve": "14.2.3"
   },
   "devDependencies": {
-    "vite": "^5.4.19"
+    "@vitejs/plugin-react": "4.3.1",
+    "vite": "5.4.5"
   }
 }
