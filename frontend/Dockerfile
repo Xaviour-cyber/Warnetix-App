@@ -2,43 +2,39 @@
 FROM node:20-alpine AS build
 WORKDIR /app
 
-# deps di root frontend
+# deps di root frontend (warnetix/frontend/package.json)
 COPY package*.json ./
-# pakai install (lebih toleran kalau lockfile gak ada/beda)
 RUN npm install --no-audit --no-fund
 
-# bawa seluruh source frontend
+# bawa semua isi folder frontend
 COPY . .
 
-# inject ENV untuk Vite saat build (set di Railway → Variables)
+# ENV buat Vite (set di Railway → Variables)
 ARG VITE_API_BASE
 ENV VITE_API_BASE=${VITE_API_BASE}
 
-# === DETEKSI LOKASI PROYEK VITE ===
-# - Kalau Vite config ada di public/src → build di sana,
-#   lalu pindahkan output ke /app/dist
-# - Kalau Vite config ada di root frontend → build biasa
+# Build dari lokasi yang bener (public/src ATAU public ATAU root)
 RUN set -e; \
-  if [ -f public/src/vite.config.js ] || [ -f public/src/vite.config.ts ]; then \
-    echo '>> Build from public/src'; \
-    npx vite build -c public/src/vite.config.js || npx vite build -c public/src/vite.config.ts; \
-    mkdir -p /app/dist && mv public/src/dist/* /app/dist/; \
-  elif [ -f vite.config.js ] || [ -f vite.config.ts ]; then \
-    echo '>> Build from frontend root'; \
-    npx vite build || npm run build || (echo "Vite build failed"; exit 1); \
+  if [ -f public/src/index.html ]; then \
+    echo '>> build: public/src'; \
+    cd public/src && /app/node_modules/.bin/vite build && mkdir -p /app/dist && mv dist/* /app/dist/; \
+  elif [ -f public/index.html ]; then \
+    echo '>> build: public'; \
+    cd public && /app/node_modules/.bin/vite build && mkdir -p /app/dist && mv dist/* /app/dist/; \
+  elif [ -f index.html ]; then \
+    echo '>> build: root'; \
+    /app/node_modules/.bin/vite build && mkdir -p /app/dist && mv dist/* /app/dist/; \
   else \
-    echo "ERROR: vite.config.js/ts tidak ditemukan (di root atau public/src)"; \
-    ls -la; exit 1; \
+    echo 'ERROR: index.html tidak ditemukan di public/src, public, atau root' && exit 1; \
+  fi; \
+  # ikutkan halaman upload sederhana kalau ada
+  if [ -f public/simple_upload.html ]; then \
+    cp public/simple_upload.html /app/dist/simple_upload.html; \
   fi
 
-# ikutkan simple_upload.html kalau ada
-RUN if [ -f public/simple_upload.html ]; then \
-      cp public/simple_upload.html /app/dist/simple_upload.html; \
-    fi
-
-# ---------- serve (nginx) ----------
+# ---------- serve (Nginx) ----------
 FROM nginx:alpine
-# nginx.conf harus ada di frontend/nginx.conf
+# file ini harus ada di frontend/nginx.conf
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/dist /usr/share/nginx/html
 EXPOSE 80
