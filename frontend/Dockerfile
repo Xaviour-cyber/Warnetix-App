@@ -16,7 +16,7 @@ ENV VITE_API_BASE=${VITE_API_BASE}
 # Deteksi index.html & config, build Vite dengan --root yang tepat
 RUN set -e; \
   INDEX=""; \
-  for p in "public/src/index.html" "public/index.html" "index.html"; do \
+  for p in public/src/index.html public/index.html index.html; do \
     [ -f "$p" ] && INDEX="$p" && break; \
   done; \
   if [ -z "$INDEX" ]; then \
@@ -29,18 +29,14 @@ RUN set -e; \
   BUILD_DIR=$(dirname "$INDEX"); \
   echo ">> Vite build root: $BUILD_DIR (index: $INDEX)"; \
   CFG=""; \
-  for c in "$BUILD_DIR/vite.config.js" "$BUILD_DIR/vite.config.ts" "vite.config.js" "vite.config.ts"; do \
+  for c in "$BUILD_DIR/vite.config.js" "$BUILD_DIR/vite.config.ts" vite.config.js vite.config.ts; do \
     [ -f "$c" ] && CFG="$c" && break; \
   done; \
-  if [ -n "$CFG" ]; then \
-    npx vite build --root "$BUILD_DIR" --outDir /app/dist -c "$CFG"; \
-  else \
-    npx vite build --root "$BUILD_DIR" --outDir /app/dist; \
-  fi; \
-  # ikutkan halaman upload sederhana kalau ada
-  if [ -f public/simple_upload.html ]; then \
-    cp public/simple_upload.html /app/dist/simple_upload.html; \
-  fi
+  cd "$BUILD_DIR"; \
+  if [ -n "$CFG" ]; then npx vite build -c "$CFG"; else npx vite build; fi; \
+  mkdir -p /app/dist && mv dist/* /app/dist/; \
+  [ -f ../simple_upload.html ] && cp ../simple_upload.html /app/dist/simple_upload.html || true; \
+  [ -f ../../simple_upload.html ] && cp ../../simple_upload.html /app/dist/simple_upload.html || true
 
 # ---------- serve (Nginx) ----------
 FROM nginx:alpine
