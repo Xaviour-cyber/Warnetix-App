@@ -1,13 +1,15 @@
 ﻿{
-  "name": "warnetix-root",
+  "name": "warnetix-frontend-runner",
   "private": true,
-  "version": "0.0.1",
   "scripts": {
-    "postinstall": "cd frontend/public/src && (npm ci --no-audit --no-fund || npm install --no-audit --no-fund)",
-    "build": "cd frontend/public/src && npm run build",
-    "start": "npx serve -s frontend/public/src/dist -l $PORT"
+    "prebuild": "cd frontend/public/src && if [ -f package-lock.json ]; then npm ci --no-audit --no-fund; else npm install --no-audit --no-fund; fi",
+    "build": "cd frontend/public/src && npx vite build",
+    "start": "serve -s frontend/public/src/dist -l ${PORT:-8080}"
   },
   "dependencies": {
-    "serve": "14.2.3"
+    "serve": "^14.2.1"
+  },
+  "devDependencies": {
+    "vite": "^5.4.19"
   }
 }
