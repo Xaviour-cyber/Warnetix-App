@@ -72,8 +72,8 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "https://warnetix-frontend.up.railway.app",  # ganti dgn domain FE kamu
-        "http://localhost:5173",                     # biar dev lokal tetap jalan
+        "https://warnetix-frontend.up.railway.app",
+        "http://localhost:5173",
     ],
     allow_credentials=True,
     allow_methods=["*"],
