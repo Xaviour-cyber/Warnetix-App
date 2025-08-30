@@ -1,15 +1,12 @@
-﻿FROM nginx:alpine
+﻿# frontend/Dockerfile  — build context harus folder "frontend"
+FROM nginx:alpine
+
+# Nginx document root
 WORKDIR /usr/share/nginx/html
 
-# copy semua konten public dan public/src kalau ada
+# Copy seluruh isi frontend/public ke root Nginx
+# (sudah termasuk /src dan simple_upload.html kalau ada)
 COPY public/ ./
-COPY public/src/ ./    
-
-# optional: halaman upload sederhana jika ada di root frontend/
-COPY simple_upload.html ./ 
-
-# nginx conf opsional (kalau kamu punya)
-# COPY ../deploy/nginx.conf /etc/nginx/conf.d/default.conf
 
 EXPOSE 80
-CMD ["nginx","-g","daemon off;"]
+CMD ["nginx", "-g", "daemon off;"]
