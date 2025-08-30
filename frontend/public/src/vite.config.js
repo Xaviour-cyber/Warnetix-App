@@ -3,7 +3,7 @@ import { defineConfig } from "vite";
 import { fileURLToPath, URL } from "node:url";
 
 export default defineConfig({
-  // root = folder ini (frontend/public/src) -> Vite bakal ketemu index.html
+  // root = folder file ini (frontend/public/src) -> Vite ketemu index.html
   root: fileURLToPath(new URL(".", import.meta.url)),
   publicDir: fileURLToPath(new URL("./public", import.meta.url)),
   build: { outDir: "dist", sourcemap: false },
