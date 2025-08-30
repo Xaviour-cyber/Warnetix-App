@@ -1,25 +1,34 @@
-FROM python:3.11-slim
-
+# ---------- Build (React + Vite) ----------
+FROM node:20-alpine AS build
 WORKDIR /app
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
 
-# Sistem deps
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libmagic1 gcc build-essential && rm -rf /var/lib/apt/lists/*
+# deps React (di frontend/public/src)
+COPY frontend/public/src/package*.json ./
+# gunakan lock kalau ada; kalau tidak, fallback npm install
+RUN npm ci --no-audit --no-fund || npm install --no-audit --no-fund
 
-COPY requirements.txt /app/
-RUN pip install --no-cache-dir -r requirements.txt
+# source React
+COPY frontend/public/src/ ./
 
-# copy source
-COPY backend /app/backend
+# opsional: inject env build-time dari Railway (atau pakai .env.production)
+ARG VITE_API_BASE
+ENV VITE_API_BASE=${VITE_API_BASE}
 
-# default port (overridden by $PORT from PaaS)
-ENV PORT=8000
+# build -> dist
+RUN npm run build
 
-# healthcheck (opsional: beberapa PaaS punya mekanisme sendiri)
-HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-  CMD python -c "import urllib.request; import os; \
-  urllib.request.urlopen(f'http://127.0.0.1:{os.environ.get(\"PORT\",\"8000\")}/health').read()"
+# ---------- Runtime (nginx) ----------
+FROM nginx:alpine
+WORKDIR /usr/share/nginx/html
 
-CMD ["sh", "-c", "uvicorn backend.app:app --host 0.0.0.0 --port ${PORT}"]
+# hasil build ke root dokumen
+COPY --from=build /app/dist ./
+
+# pakai config SPA kamu
+COPY frontend/nginx.conf /etc/nginx/conf.d/default.conf
+
+# jaga rute lama /simple_upload.html tetap hidup (fallback ke index.html kalau nggak ada)
+RUN [ -f simple_upload.html ] || cp index.html simple_upload.html
+
+EXPOSE 80
+CMD ["nginx","-g","daemon off;"]
