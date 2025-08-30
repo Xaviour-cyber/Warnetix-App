@@ -25,3 +25,6 @@ backend/scanner_core/models/anomaly_iforest.joblib
 
 !frontend/.env.production
 
+
+!frontend/public/src/.env.production
+
