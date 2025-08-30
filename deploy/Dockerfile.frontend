@@ -1,13 +1,31 @@
-﻿FROM node:20-alpine AS build
+﻿# ---- build (Vite) ----
+FROM node:20-alpine AS build
 WORKDIR /app
-COPY frontend/package*.json ./
+
+# package.json memang ada di frontend/public/src
+COPY frontend/public/src/package*.json ./
 RUN npm ci --no-audit --no-fund
-COPY frontend/ .
+
+# copy seluruh project FE (src + index.html + vite.config)
+COPY frontend/public/src/ .
+
+# inject env ke Vite saat build (Railway -> Variables: VITE_API_BASE=https://warnetix-backend.up.railway.app)
 ARG VITE_API_BASE
-ENV VITE_API_BASE=
+ENV VITE_API_BASE=${VITE_API_BASE}
+
 RUN npm run build
+# hasil build ada di /app/dist
+
+# ---- serve (nginx) ----
 FROM nginx:alpine
+# nginx.conf tetap di deploy/
 COPY deploy/nginx.conf /etc/nginx/conf.d/default.conf
+
+# salin hasil build Vite
 COPY --from=build /app/dist /usr/share/nginx/html
+
+# tambahkan simple_upload.html langsung ke root web
+COPY frontend/public/simple_upload.html /usr/share/nginx/html/simple_upload.html
+
 EXPOSE 80
 CMD ["nginx","-g","daemon off;"]
