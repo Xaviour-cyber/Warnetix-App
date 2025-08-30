@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.log
+data/*.db
+data/*.db-*
+scanner_core/models/*.joblib
