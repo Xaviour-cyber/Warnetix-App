@@ -20,21 +20,16 @@ RUN set -e; \
     [ -f "$p" ] && INDEX="$p" && break; \
   done; \
   if [ -z "$INDEX" ]; then \
-    INDEX=$(find . -maxdepth 5 -name index.html | head -n1); \
+    INDEX=$(find . -maxdepth 5 -name index.html | head -n1 || true); \
   fi; \
   if [ -z "$INDEX" ]; then \
-    echo "ERROR: index.html tidak ditemukan di public/src, public, root, atau subfolder (<=5)"; \
-    ls -la; exit 1; \
+    echo "ERROR: index.html tidak ditemukan"; exit 1; \
   fi; \
   BUILD_DIR=$(dirname "$INDEX"); \
   echo ">> Vite build root: $BUILD_DIR (index: $INDEX)"; \
-  CFG=""; \
-  for c in "$BUILD_DIR/vite.config.js" "$BUILD_DIR/vite.config.ts" vite.config.js vite.config.ts; do \
-    [ -f "$c" ] && CFG="$c" && break; \
-  done; \
   cd "$BUILD_DIR"; \
-  if [ -n "$CFG" ]; then npx vite build -c "$CFG"; else npx vite build; fi; \
-  mkdir -p /app/dist && mv dist/* /app/dist/; \
+  npx vite build; \
+  mkdir -p /app/dist && cp -r dist/* /app/dist/; \
   [ -f ../simple_upload.html ] && cp ../simple_upload.html /app/dist/simple_upload.html || true; \
   [ -f ../../simple_upload.html ] && cp ../../simple_upload.html /app/dist/simple_upload.html || true
 
