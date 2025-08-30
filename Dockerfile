@@ -2,7 +2,7 @@
 FROM node:20-alpine AS build
 WORKDIR /app
 
-# paket React (di dalam frontend/public/src)
+# deps from the React app folder
 COPY frontend/public/src/package*.json ./
 RUN if [ -f package-lock.json ]; then \
       npm ci --no-audit --no-fund; \
@@ -10,24 +10,15 @@ RUN if [ -f package-lock.json ]; then \
       npm install --no-audit --no-fund; \
     fi
 
-# seluruh source React
+# app sources (index.html, vite.config.js, src/, components/, pages/, public/, etc.)
 COPY frontend/public/src/ ./
-
-# build vite => /app/dist
 RUN npm run build
 
 # ---------- Runtime (nginx) ----------
 FROM nginx:alpine
-WORKDIR /usr/share/nginx/html
-
-# hasil build
-COPY --from=build /app/dist ./
-
-# config nginx untuk SPA + (opsional) proxy /api ke backend
+# SPA routing + /api proxy (static keeps working)
 COPY frontend/nginx.conf /etc/nginx/conf.d/default.conf
-
-# fallback: pastikan /simple_upload.html ada
-RUN [ -f simple_upload.html ] || cp index.html simple_upload.html
-
+# ship the built site
+COPY --from=build /app/dist /usr/share/nginx/html
 EXPOSE 80
 CMD ["nginx","-g","daemon off;"]
