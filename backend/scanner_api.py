@@ -6,8 +6,8 @@ load_dotenv()
 
 # ---- FastAPI + DB bootstrap
 from fastapi import FastAPI
-from backend.db import migrate, connect, insert_event, vt_cache_get, vt_cache_put
-from backend.db import signature_lookup, upsert_signature  # helper signature DB (MBZ/Kaggle)
+from .db import migrate, connect, insert_event, vt_cache_get, vt_cache_put
+from .db import signature_lookup, upsert_signature  # helper signature DB (MBZ/Kaggle)
 
 app = FastAPI(title="Warnetix Scanner API", version="3.2.5")
 CONN = None
@@ -1108,7 +1108,7 @@ except NameError:
 
             # Pastikan DB core siap (fungsi2 ini sudah dipakai di modul ini)
             try:
-                from backend.db import migrate
+                from .db import migrate
                 migrate()  # idempotent
             except Exception as e:
                 if self.logger:

@@ -11,11 +11,11 @@ from dotenv import load_dotenv
 from colorama import init as colorama_init, Fore, Style
 
 # router tambahan (signatures/ready/single-file/scan-results)
-from backend.api import router as aux_router, save_report_to_s3, persist_scan_meta
-from backend.db import init_schema
+from .api import router as aux_router, save_report_to_s3, persist_scan_meta
+from .db import init_schema
 
 # ---- Local engine
-from backend.scanner_api import WarnetixScanner, build_threat_summary
+from .scanner_api import WarnetixScanner, build_threat_summary
 
 # ---------------------------------------------------------------------
 # Env & logging
