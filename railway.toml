@@ -1,9 +1,0 @@
-# ---- Backend (Warnetix-App) ----
-[services.warnetix-app]
-root = "."
-dockerfilePath = "deploy/Dockerfile.backend"
-
-# ---- Frontend (zonal-balance) ----
-[services.zonal-balance]
-root = "."
-dockerfilePath = "Dockerfile"
