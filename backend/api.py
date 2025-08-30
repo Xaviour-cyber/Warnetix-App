@@ -11,6 +11,7 @@ from sqlalchemy import text
 from backend.db import SessionLocal, init_schema
 from backend.db import scan_file_sync  # pakai scan_file_sync single-file
 from . import scanner_api
+from db import SessionLocal, init_schema 
 
 # ---------------------------------------------------------------------
 # Setup umum
