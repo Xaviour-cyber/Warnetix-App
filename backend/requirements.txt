@@ -16,3 +16,4 @@ httpx==0.24.1                   # http client async
 pydantic==2.8.2
 pillow==11.0.0
 python-dotenv==1.0.0
+scikit-learn==1.7.1
