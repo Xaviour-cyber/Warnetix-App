@@ -1,316 +1,268 @@
-import React, { useCallback, useMemo, useRef, useState } from "react";
-import axios from "axios";
-import clsx from "clsx";
-// Jika react-icons sudah terpasang, ini aktif.
-// Kalau belum, komponen tetap jalan—ikon akan fallback ke emoji.
-let Icons = {};
-try {
-  // Feather + Simple Icons
-  Icons = {
-    FiUpload: (await import("react-icons/fi")).FiUpload,
-    FiFile: (await import("react-icons/fi")).FiFile,
-    FiShield: (await import("react-icons/fi")).FiShield,
-    FiLink: (await import("react-icons/fi")).FiLink,
-    FiTrash2: (await import("react-icons/fi")).FiTrash2,
-    FiClock: (await import("react-icons/fi")).FiClock,
-    SiVirustotal: (await import("react-icons/si")).SiVirustotal,
-    FiActivity: (await import("react-icons/fi")).FiActivity,
-    FiCpu: (await import("react-icons/fi")).FiCpu,
-    FiAlertTriangle: (await import("react-icons/fi")).FiAlertTriangle,
-    FiCheckCircle: (await import("react-icons/fi")).FiCheckCircle,
-    FiXCircle: (await import("react-icons/fi")).FiXCircle,
-  };
-} catch { /* fallback emoji will be used */ }
+import React, { useCallback, useRef, useState } from "react";
+import { API_BASE, uploadFile } from "../api/api";
+import { toast } from "./Toast";
+import { FiUpload, FiLink, FiCheckCircle, FiAlertTriangle, FiX } from "react-icons/fi";
 
-// ---- API BASE ----
-// Pastikan file ini sesuai dengan yang kamu pakai.
-// Kalau sudah ada helper, kamu bisa impor dari ../api/api
-const API_BASE =
-  import.meta.env.VITE_API_BASE ||
-  (window.__WARNETIX_API_BASE__ ?? "http://localhost:8000");
+function prettyBytes(b){
+  if (b === 0) return "0 B";
+  if (!b && b !== 0) return "-";
+  const u = ["B","KB","MB","GB","TB"];
+  let i = 0; while (b >= 1024 && i < u.length - 1) { b /= 1024; i++; }
+  return `${b.toFixed(1)} ${u[i]}`;
+}
+function sevNorm(s){
+  const v = String(s || "low").toLowerCase();
+  if (v.startsWith("crit")) return "critical";
+  if (v.startsWith("hi"))   return "high";
+  if (v.startsWith("med"))  return "medium";
+  return "low";
+}
+function sevLabel(s){ const v = sevNorm(s); return v.charAt(0).toUpperCase()+v.slice(1); }
+function sevClass(s){
+  const v = sevNorm(s);
+  if (v === "critical") return "sev sev-critical";
+  if (v === "high")     return "sev sev-high";
+  if (v === "medium")   return "sev sev-medium";
+  return "sev sev-low";
+}
+function scoreClass(score){
+  const n = Number(score ?? 0);
+  if (n >= 80) return "score-chip badge-high";
+  if (n >= 50) return "score-chip badge-mid";
+  return "score-chip badge-low";
+}
 
-// ---- Helpers ----
-const fmtBytes = (b = 0) => {
-  if (!b) return "0 B";
-  const u = ["B", "KB", "MB", "GB", "TB"];
-  const i = Math.floor(Math.log(b) / Math.log(1024));
-  return `${(b / Math.pow(1024, i)).toFixed(2)} ${u[i]}`;
-};
-
-const severityToBadge = (sev) => {
-  switch ((sev || "").toLowerCase()) {
-    case "high":
-      return "badge badge-high";
-    case "medium":
-      return "badge badge-mid";
-    default:
-      return "badge badge-low";
+async function scanUrlApi(url){
+  const endpoints = ["/scan-url", "/api/scan-url"];
+  let lastErr;
+  for (const p of endpoints){
+    try{
+      const r = await fetch((API_BASE || "") + p, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url })
+      });
+      const ct = r.headers.get("content-type") || "";
+      const data = ct.includes("application/json") ? await r.json() : await r.text();
+      if (!r.ok) throw new Error(typeof data === "string" ? data : (data?.error || r.statusText));
+      return data;
+    }catch(e){ lastErr = e; }
   }
-};
+  throw lastErr || new Error("scan-url endpoint not available");
+}
 
-const gradientFromScore = (score /* 0..100 */) => {
-  // 0-35 green, 35-70 yellow/orange, 70-100 red
-  let c1 = "#1fd65f";
-  let c2 = "#7adf8d";
-  if (score >= 35 && score < 70) {
-    c1 = "#f3c221";
-    c2 = "#ff9e2a";
-  }
-  if (score >= 70) {
-    c1 = "#ff4d4d";
-    c2 = "#cc0033";
-  }
-  return `linear-gradient(90deg, ${c1}, ${c2})`;
-};
-
-const vendorIcon = (vendor) => {
-  const v = (vendor || "").toLowerCase();
-  const I = Icons;
-  if (v.includes("virustotal") || v === "vt") return I.SiVirustotal ? <I.SiVirustotal /> : "🧪";
-  if (v.includes("ai") || v.includes("iforest")) return I.FiCpu ? <I.FiCpu /> : "🤖";
-  if (v.includes("signature") || v.includes("sig")) return I.FiShield ? <I.FiShield /> : "🛡️";
-  if (v.includes("entropy")) return I.FiActivity ? <I.FiActivity /> : "📈";
-  if (v.includes("behavior")) return I.FiAlertTriangle ? <I.FiAlertTriangle /> : "⚠️";
-  return I.FiFile ? <I.FiFile /> : "📄";
-};
-
-const ScoreChip = ({ score = 0, severity = "low" }) => {
-  const style = { backgroundImage: gradientFromScore(score) };
-  return (
-    <div className="score-chip" style={style} title={`Threat Score: ${score}`}>
-      <span className="score-chip__value">{score}</span>
-      <span className={clsx("score-chip__sev", severityToBadge(severity))}>
-        {severity.toUpperCase()}
-      </span>
-    </div>
-  );
-};
-
-const VendorBadges = ({ detectedBy = [] }) => {
-  if (!detectedBy || detectedBy.length === 0) return <span className="muted">—</span>;
-  return (
-    <div className="vendor-badges">
-      {detectedBy.map((v, i) => (
-        <div key={`${v.name}-${i}`} className={clsx("vendor-badge", v.positive ? "pos" : "neg")}>
-          <span className="vendor-badge__icon">{vendorIcon(v.name)}</span>
-          <span className="vendor-badge__name">{v.name}</span>
-          <span className="vendor-badge__sig">{v.signature || "-"}</span>
-        </div>
-      ))}
-    </div>
-  );
-};
-
-const LoadingOverlay = ({ show = false, text = "Scanning…" }) => {
-  if (!show) return null;
-  const I = Icons;
-  return (
-    <div className="loading-overlay">
-      <div className="loading-card">
-        <div className="spinner-ctr">
-          <div className="spinner-ring" />
-        </div>
-        <div className="loading-text">{text}</div>
-        <div className="loading-sub">
-          {I.FiClock ? <I.FiClock /> : "⏳"} Real‑time analysis • AI • VirusTotal • Signatures
-        </div>
-      </div>
-    </div>
-  );
-};
-
-const ResultRow = ({ r, onClear }) => {
-  const I = Icons;
-  const sev = (r?.severity || "low").toLowerCase();
-  const statusIcon =
-    sev === "high" ? (I.FiXCircle ? <I.FiXCircle /> : "❌")
-      : sev === "medium" ? (I.FiAlertTriangle ? <I.FiAlertTriangle /> : "⚠️")
-      : (I.FiCheckCircle ? <I.FiCheckCircle /> : "✅");
-
-  return (
-    <div className="result-row">
-      <div className="result-meta">
-        <div className="result-title">
-          {Icons.FiFile ? <Icons.FiFile /> : "📄"} {r?.filename || r?.url || "Unknown"}
-        </div>
-        <div className="result-sub">
-          {r?.file_size ? `${fmtBytes(r.file_size)} • ` : ""}
-          {r?.mimetype || r?.content_type || "—"}
-        </div>
-      </div>
-
-      <div className="result-score">
-        <ScoreChip score={Math.round(r?.threat_score ?? 0)} severity={r?.severity || "low"} />
-      </div>
-
-      <div className="result-status">
-        <span className={clsx("status", `sev-${sev}`)}>
-          <span className="ico">{statusIcon}</span>
-          <span className="txt">{(r?.status_label ?? "CLEAN").toUpperCase()}</span>
-        </span>
-      </div>
-
-      <div className="result-vendors">
-        <VendorBadges detectedBy={r?.detected_by || []} />
-      </div>
-
-      <div className="result-actions">
-        <button className="btn ghost" onClick={onClear} title="Hapus hasil ini">
-          {I.FiTrash2 ? <I.FiTrash2 /> : "🗑️"}
-        </button>
-      </div>
-    </div>
-  );
-};
-
-export default function UploadDropzone() {
+export default function UploadDropzone({
+  accept = "*",
+  multiple = false,
+  onUploaded,
+  maxItems = 50
+}){
+  const inputRef = useRef(null);
   const [dragOver, setDragOver] = useState(false);
-  const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const [url, setUrl] = useState("");
   const [results, setResults] = useState([]);
-  const [urlText, setUrlText] = useState("");
-  const fileRef = useRef(null);
 
-  const onBrowse = () => fileRef.current?.click();
+  const addResult = useCallback((res)=>{
+    setResults(prev => [res, ...prev].slice(0, maxItems));
+  }, [maxItems]);
 
-  const onDrop = useCallback(async (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragOver(false);
-    const files = Array.from(e.dataTransfer?.files || []);
+  const doUploadOne = useCallback(async (file)=>{
+    if (!file) return;
+    setBusy(true);
+    setProgress(5);
+    try{
+      const res = await uploadFile(file); // api.js: fallback /api/scan | /scan-file | /scan | /api/scan-file
+      setProgress(100);
+      addResult({
+        kind: "file",
+        name: file.name,
+        size: file.size,
+        sha256: res?.target?.sha256 || res?.sha256,
+        severity: res?.severity || res?.data?.severity,
+        score: res?.score,
+        vendor_results: res?.vendor_results || res?.vendors || [],
+        raw: res
+      });
+      toast.success("File uploaded & scanned");
+      onUploaded?.(res);
+    }catch(e){
+      toast.error("Upload gagal: " + (e?.message || "unknown"));
+    }finally{
+      setTimeout(()=> setProgress(0), 300);
+      setBusy(false);
+    }
+  }, [addResult, onUploaded]);
+
+  const doUploadInput = useCallback(async (e)=>{
+    const files = Array.from(e.target.files || []);
     if (!files.length) return;
-    await scanFiles(files);
+    if (!multiple) return doUploadOne(files[0]);
+    for (const f of files) { // sequential biar progress jelas
+      /* eslint-disable no-await-in-loop */
+      await doUploadOne(f);
+    }
+  }, [multiple, doUploadOne]);
+
+  const onDrop = useCallback(async (e)=>{
+    e.preventDefault(); setDragOver(false);
+    const files = Array.from(e.dataTransfer.files || []);
+    if (!files.length) return toast.info("Gak ada file.");
+    if (!multiple) return doUploadOne(files[0]);
+    for (const f of files) { await doUploadOne(f); }
+  }, [multiple, doUploadOne]);
+
+  const onDrag = useCallback((e)=>{
+    e.preventDefault();
+    if (e.type === "dragenter" || e.type === "dragover") setDragOver(true);
+    if (e.type === "dragleave") setDragOver(false);
   }, []);
 
-  const onDrag = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (e.type === "dragenter" || e.type === "dragover") setDragOver(true);
-    else setDragOver(false);
-  };
-
-  const scanFiles = async (files) => {
+  const handleScanUrl = useCallback(async ()=>{
+    if (!url.trim()) return toast.info("Masukkan URL dulu.");
     setBusy(true);
-    setProgress(0);
-    try {
-      for (let i = 0; i < files.length; i++) {
-        const f = files[i];
-        const form = new FormData();
-        form.append("file", f);
-        const { data } = await axios.post(`${API_BASE}/scan-file?wait=true`, form, {
-          headers: { "Content-Type": "multipart/form-data" },
-          onUploadProgress: (pe) => {
-            if (pe?.total) {
-              const pct = Math.round((pe.loaded / pe.total) * 100);
-              setProgress(pct);
-            }
-          },
-        });
-
-        const normalized = normalizeScanResponse(data, f.name, f.size);
-        setResults((prev) => [normalized, ...prev]);
-      }
-    } catch (err) {
-      console.error(err);
-      alert(`Upload/scan gagal: ${err?.response?.data?.detail || err.message}`);
-    } finally {
+    try{
+      const res = await scanUrlApi(url.trim());
+      addResult({
+        kind: "url",
+        url: url.trim(),
+        severity: res?.severity || res?.data?.severity,
+        score: res?.score,
+        vendor_results: res?.vendor_results || res?.vendors || [],
+        raw: res
+      });
+      toast.success("URL scanned");
+      onUploaded?.(res);
+    }catch(e){
+      toast.error("Scan URL gagal: " + (e?.message || "unknown"));
+    }finally{
       setBusy(false);
-      setProgress(0);
     }
-  };
-
-  const scanURL = async () => {
-    const url = urlText.trim();
-    if (!url) return;
-    setBusy(true);
-    setProgress(0);
-    try {
-      const { data } = await axios.post(`${API_BASE}/scan-url`, { url });
-      const normalized = normalizeScanResponse(data, url, 0, true);
-      setResults((prev) => [normalized, ...prev]);
-    } catch (err) {
-      console.error(err);
-      alert(`Scan URL gagal: ${err?.response?.data?.detail || err.message}`);
-    } finally {
-      setBusy(false);
-      setProgress(0);
-    }
-  };
-
-  const clearOne = (idx) => setResults((prev) => prev.filter((_, i) => i !== idx));
-  const clearAll = () => setResults([]);
+  }, [url, addResult, onUploaded]);
 
   return (
     <div className="ud-root">
-      <LoadingOverlay show={busy} text={progress ? `Uploading ${progress}%…` : "Scanning…"} />
-
+      {/* Dropzone */}
       <div
-        className={clsx("dropzone", dragOver && "over")}
-        onDrop={onDrop}
+        className={`dropzone ${dragOver ? "over" : ""}`}
         onDragEnter={onDrag}
         onDragOver={onDrag}
         onDragLeave={onDrag}
+        onDrop={onDrop}
       >
         <div className="dz-inner">
-          <div className="dz-icon">{Icons.FiUpload ? <Icons.FiUpload /> : "📤"}</div>
-          <div className="dz-title">Drag & Drop file kamu di sini</div>
-          <div className="dz-sub">atau</div>
-          <button className="btn primary" onClick={onBrowse}>
-            Pilih File
-          </button>
-          <input
-            ref={fileRef}
-            type="file"
-            multiple
-            className="hidden"
-            onChange={(e) => {
-              const files = Array.from(e.target.files || []);
-              if (files.length) scanFiles(files);
-              e.target.value = "";
-            }}
-          />
+          <div className="dz-title"><FiUpload/> Tarik & letakkan file di sini</div>
+          <div className="dim">atau</div>
+          <div>
+            <button
+              className="ghost"
+              onClick={()=> inputRef.current?.click()}
+              disabled={busy}
+            >
+              Pilih File
+            </button>
+            <input
+              ref={inputRef}
+              className="hidden"
+              type="file"
+              accept={accept}
+              multiple={multiple}
+              onChange={doUploadInput}
+            />
+          </div>
+          {progress > 0 && (
+            <div style={{width:"100%", marginTop: 8}}>
+              <progress value={progress} max={100} style={{width:"100%"}} />
+            </div>
+          )}
         </div>
       </div>
 
-      <div className="or-divider">
-        <span>ATAU SCAN URL</span>
-      </div>
-
+      {/* URL Scan */}
       <div className="url-box">
-        <div className="url-ico">{Icons.FiLink ? <Icons.FiLink /> : "🔗"}</div>
+        <FiLink/>
         <input
           type="text"
-          placeholder="https://contoh-domain.com/unduhan.exe"
-          value={urlText}
-          onChange={(e) => setUrlText(e.target.value)}
+          placeholder="https://contoh.com/sample.exe"
+          value={url}
+          onChange={(e)=>setUrl(e.target.value)}
         />
-        <button className="btn" onClick={scanURL}>
-          Scan URL
-        </button>
+        <button onClick={handleScanUrl} disabled={busy}>Scan URL</button>
       </div>
 
+      {/* Hasil */}
       <div className="panel">
         <div className="panel-head">
           <div className="panel-title">
-            {Icons.FiShield ? <Icons.FiShield /> : "🛡️"} Hasil Pemindaian
+            <FiCheckCircle/> Hasil Scan
           </div>
           <div className="panel-actions">
-            <button className="btn ghost" onClick={clearAll} title="Bersihkan semua hasil">Bersihkan</button>
+            <button className="ghost" onClick={()=>setResults([])} disabled={!results.length}>
+              <FiX/> Bersihkan
+            </button>
           </div>
         </div>
 
-        {results.length === 0 ? (
-          <div className="empty">
-            Belum ada hasil. Unggah file atau masukkan URL untuk memulai scan.
-          </div>
-        ) : (
-          <div className="result-list">
-            {results.map((r, idx) => (
-              <ResultRow key={idx} r={r} onClear={() => clearOne(idx)} />
-            ))}
-          </div>
-        )}
+        <div className="result-list">
+          {!results.length && <div className="dim">Belum ada hasil.</div>}
+
+          {results.map((r, idx)=>{
+            const title = r.kind === "url" ? (r.url || "URL") : (r.name || "File");
+            const sub = r.kind === "url"
+              ? "URL"
+              : `${prettyBytes(r.size)}${r.sha256 ? ` • ${r.sha256.slice(0,12)}…` : ""}`;
+            const sev = sevNorm(r.severity);
+            const vendors = Array.isArray(r.vendor_results) ? r.vendor_results : [];
+            const s = Number(r.score ?? 0);
+
+            return (
+              <div className="result-row" key={idx}>
+                <div>
+                  <div className="result-title">{title}</div>
+                  <div className="result-sub">{sub}</div>
+                </div>
+
+                <div className={sevClass(sev)}>{sevLabel(sev)}</div>
+
+                <div className={scoreClass(s)}>
+                  <span className="score-chip__value">{isNaN(s)? "-" : s}</span>
+                  <span className="score-chip__sev">{sevLabel(sev)}</span>
+                </div>
+
+                <div className="vendor-badges">
+                  {vendors.length === 0 && <span className="dim">No vendor data</span>}
+                  {vendors.map((v,i)=>{
+                    const mal = v.malicious || /(mal|trojan|virus|risk|suspect|danger)/i.test(String(v.result||""));
+                    return (
+                      <span className={`vendor-badge ${mal ? "neg" : "pos"}`} key={i} title={v.result || ""}>
+                        {mal ? <FiAlertTriangle/> : <FiCheckCircle/>}
+                        <span>{v.engine || v.name || "engine"}</span>
+                      </span>
+                    );
+                  })}
+                </div>
+
+                <div style={{justifySelf:"end"}}>
+                  {r.raw?.created_event_id && (
+                    <span className="badge">evt: {String(r.raw.created_event_id).slice(0,8)}…</span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </div>
+
+      {/* Overlay loading kecil (ketika busy upload/scan) */}
+      {busy && (
+        <div className="loading-overlay">
+          <div className="loading-card">
+            <div className="spinner-ctr"><div className="spinner-ring"/></div>
+            Memproses…
+          </div>
+        </div>
+      )}
     </div>
   );
 }

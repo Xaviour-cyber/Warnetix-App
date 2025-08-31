@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { fetchRecentEvents, fetchDevices, fetchTimeSeries, severityNorm } from "../api/api";
 import SeverityDonut from "../components/SeverityDonut";
 import TimeSeries from "../components/TimeSeries";
+import Navbar from "../components/Navbar";
 
 export default function Dashboard() {
   const [recent, setRecent] = useState([]);
