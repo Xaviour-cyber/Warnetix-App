@@ -841,35 +841,29 @@ async def sse_event_generator():
             last_hb = time.time()
 
 # ===== routes =====
-@app.get("/__debug/model")
-def __debug_model():
-    try:
-        info = {
-            "python": platform.python_version(),
-            "sklearn": getattr(sklearn, "__version__", None),
-            "cwd": os.getcwd(),
-            "model_path": str(ANOM_PATH),
-            "model_exists": ANOM_PATH.exists(),
-            "model_size": (ANOM_PATH.stat().st_size if ANOM_PATH.exists() else None),
-            "loaded": getattr(app.state, "anom_model", None) is not None,
-            "features": getattr(app.state, "anom_features", []),
-            "models_dir": [],
-        }
-        mdir = Path("models")
-        if mdir.exists():
-            info["models_dir"] = [p.name for p in mdir.iterdir() if p.is_file()]
+@app.get("/__debug/ping")
+def _dbg_ping():
+    return {"ok": True}
 
-        if ANOM_PATH.exists():
+@app.get("/__debug/model-lite")
+def _dbg_model_lite():
+    try:
+        p = Path(str(ANOM_PATH))
+        info = {
+            "path": str(p),
+            "exists": p.exists(),
+            "size": (p.stat().st_size if p.exists() else None),
+            "loaded": bool(getattr(ANOM, "model", None)),
+        }
+        if p.exists():
             h = hashlib.sha256()
-            with open(ANOM_PATH, "rb") as f:
+            with open(p, "rb") as f:
                 for chunk in iter(lambda: f.read(8192), b""):
                     h.update(chunk)
-            info["model_sha256"] = h.hexdigest()
-
-        return info  # <-- unindent ke luar IF supaya selalu return
+            info["sha256"] = h.hexdigest()
+        return JSONResponse(info)
     except Exception as e:
-        return {"error": str(e)}
-
+        return JSONResponse({"error": str(e)}, status_code=200)
 
 @app.get("/health")
 def health():
