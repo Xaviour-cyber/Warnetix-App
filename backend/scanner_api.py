@@ -11,6 +11,28 @@ from db import migrate, connect, insert_event, vt_cache_get, vt_cache_put
 from db import signature_lookup, upsert_signature  # helper signature DB (MBZ/Kaggle)
 
 app = FastAPI(title="Warnetix Scanner API", version="3.2.5")
+# ---- DEBUG & GUARD ----
+from fastapi.responses import JSONResponse, StreamingResponse, PlainTextResponse
+import traceback
+
+@app.middleware("http")
+async def _catch_all_errors(request, call_next):
+    try:
+        resp = await call_next(request)
+        return resp
+    except Exception as e:
+        # cetak full traceback ke logs Railway biar kelihatan penyebab 502
+        print("[HTTP-ERR]", request.method, request.url.path, repr(e))
+        traceback.print_exc()
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+@app.get("/", response_class=PlainTextResponse)
+def _root():
+    return "ok"
+
+@app.get("/__debug/ping")
+def _dbg_ping():
+    return {"ok": True}
 CONN = None
 
 # === [AI BLOCK #1] — lokasi model v2 yang kamu minta ===
@@ -112,7 +134,6 @@ import numpy as np
 import pandas as pd
 from fastapi import File, UploadFile, Form, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
 # ---------- optional MIME detector ----------
