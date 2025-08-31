@@ -1,4 +1,3 @@
-# backend/app.py
 import os, uuid, shutil, logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Optional, Dict, Any
@@ -8,15 +7,23 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
-from colorama import init as colorama_init, Fore, Style
 
-# router tambahan (signatures/ready/single-file/scan-results)
+# warna (opsional, aman kalau tak tersedia)
+try:
+    from colorama import init as colorama_init, Fore, Style
+    colorama_init(autoreset=True)
+except Exception:
+    class _No:
+        def __getattr__(self, _): return ""
+    Fore = _No(); Style = _No()
+    def colorama_init(*_, **__): ...
+
+# router + engine + DB (TOP-LEVEL imports; root dir = backend)
 from api import router as aux_router, save_report_to_s3, persist_scan_meta
 from scanner_api import WarnetixScanner, build_threat_summary
 from db import init_schema
 
-# ---- Local engine
-from .scanner_api import WarnetixScanner, build_threat_summary
+
 
 # ---------------------------------------------------------------------
 # Env & logging

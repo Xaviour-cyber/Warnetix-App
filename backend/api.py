@@ -1,4 +1,3 @@
-# backend/api.py
 import os, json, time, uuid, hashlib, importlib, sqlite3
 import logging
 from pathlib import Path
@@ -8,16 +7,15 @@ from fastapi import APIRouter, UploadFile, File, HTTPException
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
-from backend.db import SessionLocal, init_schema
-from backend.db import scan_file_sync  # pakai scan_file_sync single-file
-from . import scanner_api
-from db import SessionLocal, init_schema 
+# ==== IMPORTS: top-level (root dir = backend) ====
+from db import SessionLocal, init_schema
+import scanner_api  # untuk scan_file_sync & util
 
 # ---------------------------------------------------------------------
 # Setup umum
 # ---------------------------------------------------------------------
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-UPLOAD_DIR = PROJECT_ROOT / "uploads"
+BASE_DIR = Path(__file__).resolve().parent  # == folder backend/
+UPLOAD_DIR = BASE_DIR / "uploads"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 logger = logging.getLogger("warnetix.api")
@@ -30,7 +28,7 @@ router = APIRouter()
 # Helper: dynamic import boto3 + fallback botocore exceptions
 # ---------------------------------------------------------------------
 try:
-    from botocore.exceptions import BotoCoreError, NoCredentialsError  # type: ignore[reportMissingImports]
+    from botocore.exceptions import BotoCoreError, NoCredentialsError  # type: ignore
 except Exception:
     class BotoCoreError(Exception): ...
     class NoCredentialsError(Exception): ...
@@ -44,7 +42,7 @@ def _boto3():
 # ---------------------------------------------------------------------
 # Signatures
 # ---------------------------------------------------------------------
-SIG_DIR = Path("signature")
+SIG_DIR = BASE_DIR / "signature"
 SIG_FILES = ["malware_signatures.json", "phishing_signatures.json", "ransomware_signatures.json"]
 
 def _sig_version() -> str:
@@ -78,7 +76,6 @@ def get_signatures_latest():
 
 # ---------------------------------------------------------------------
 # Health-like: /ready (cek model & akses S3)
-# (catatan: /health ada di app.py biar tidak duplikat)
 # ---------------------------------------------------------------------
 def _s3_ready() -> bool:
     b3 = _boto3()
@@ -99,16 +96,16 @@ def _s3_ready() -> bool:
 
 @router.get("/ready")
 def ready():
-    model_ok = Path("backend/scanner_core/models/anomaly_iforest.joblib").exists()
+    model_ok = (BASE_DIR / "scanner_core" / "models" / "anomaly_iforest.joblib").exists()
     s3_ok = _s3_ready()
     return {"ok": bool(model_ok and s3_ok), "model_loaded": model_ok, "s3": s3_ok, "signatures_version": _sig_version()}
 
 # ---------------------------------------------------------------------
-# DB util & riwayat hasil (scan_results SQLite milik scanner_api)
+# DB util & riwayat hasil (SQLite milik scanner_core)
 # ---------------------------------------------------------------------
 def _get_local_conn():
     try:
-        return sqlite3.connect(str(PROJECT_ROOT / "backend" / "scanner_core" / "warnetix_scanner.db"), check_same_thread=False)
+        return sqlite3.connect(str(BASE_DIR / "scanner_core" / "warnetix_scanner.db"), check_same_thread=False)
     except Exception:
         return None
 
@@ -138,7 +135,7 @@ def get_scan_results():
     return JSONResponse(status_code=200, content=out)
 
 # ---------------------------------------------------------------------
-# Single-file upload (versi ringan) → pindah ke path baru agar tidak bentrok
+# Single-file upload (ringan)
 # ---------------------------------------------------------------------
 @router.post("/scan/upload-one")
 async def scan_upload_one(file: UploadFile = File(...)):
@@ -160,7 +157,6 @@ async def scan_upload_one(file: UploadFile = File(...)):
         logger.exception("scan_file_sync error: %s", e)
         raise HTTPException(status_code=500, detail=f"Scan failed: {e}")
 
-    # respons ringkas
     return {
         "id": result.get("id"),
         "filename": result.get("filename"),
@@ -175,7 +171,7 @@ async def scan_upload_one(file: UploadFile = File(...)):
     }
 
 # ---------------------------------------------------------------------
-# S3 util + metadata (untuk dipakai endpoint lain kalau perlu)
+# S3 util + metadata (untuk dipakai endpoint lain)
 # ---------------------------------------------------------------------
 init_schema()  # pastikan tabel metadata 'scans' ada
 
