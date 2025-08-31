@@ -16,8 +16,9 @@ CONN = None
 # === [AI BLOCK #1] — lokasi model v2 yang kamu minta ===
 from pathlib import Path
 from pathlib import Path
-DEFAULT_MODEL_PATH = (Path(__file__).resolve().parent / 'models' / 'anomaly_model_iforest_v2.joblib')
-ANOM_PATH = Path(os.getenv('ANOMALY_MODEL_PATH', str(DEFAULT_MODEL_PATH)))
+import os
+DEFAULT_MODEL_PATH = Path(__file__).resolve().parent / "models" / "anomaly_model_iforest_v2.joblib"
+ANOM_PATH = Path(os.getenv("ANOMALY_MODEL_PATH", str(DEFAULT_MODEL_PATH)))
 @app.on_event("startup")
 async def _startup():
     """
@@ -83,7 +84,6 @@ async def _shutdown():
 
 # ===== standard imports =====
 import hashlib
-import os
 import io
 import json
 import math
