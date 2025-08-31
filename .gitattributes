@@ -6,6 +6,7 @@
 *.joblib binary -text
 *.pkl    binary -text
 *.npy    binary -text
+
 *.pkl !text !filter !merge !diff
 *.onnx !text !filter !merge !diff
 *.bin !text !filter !merge !diff
