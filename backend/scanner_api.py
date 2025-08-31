@@ -15,8 +15,7 @@ CONN = None
 
 # === [AI BLOCK #1] — lokasi model v2 yang kamu minta ===
 from pathlib import Path
-from pathlib import Path
-import os
+import os, platform, hashlib
 import sklearn
 DEFAULT_MODEL_PATH = Path(__file__).resolve().parent / "models" / "anomaly_model_iforest_v2.joblib"
 ANOM_PATH = Path(os.getenv("ANOMALY_MODEL_PATH", str(DEFAULT_MODEL_PATH)))
@@ -32,6 +31,14 @@ async def _startup():
     print("[DB] EventsDB connected.")
     print(f"[AI] CWD={os.getcwd()} ANOM_PATH={ANOM_PATH} exists={ANOM_PATH.exists()}")
     print(f"[AI] sklearn={sklearn.__version__} | ANOM_PATH={ANOM_PATH} | exists={ANOM_PATH.exists()}")
+    if ANOM_PATH.exists():
+        h = hashlib.sha256()
+        with open(ANOM_PATH, "rb") as f:
+            for chunk in iter(lambda: f.read(8192), b""):
+                h.update(chunk)
+        print(f"[AI] model_sha256={h.hexdigest()} size={ANOM_PATH.stat().st_size}")
+    else:
+        print(f"[AI] model_missing at {ANOM_PATH}")
 
     # === [AI BLOCK #2] — load anomaly model (IsolationForest v2) ===
     # Model bisa berupa:
@@ -270,8 +277,8 @@ MODEL_CANDIDATES = [
     Path(os.getenv('ANOMALY_MODEL_PATH')).resolve() if os.getenv('ANOMALY_MODEL_PATH') else None,
     ROOT / 'models' / 'anomaly_model_iforest_v2.joblib',
     ROOT / 'scanner_core' / 'models' / 'anomaly_model_iforest_v2.joblib',
-    ROOT / 'scanner_core' / 'anomaly_model_iforest_v2.joblib',
-    PROJ / 'backend' / 'sample_files' / 'anomaly_model_iforest_v2.joblib',
+    ROOT / 'scanner_core' / 'models' / 'anomaly_iforest.joblib',
+    PROJ / 'backend' / 'models' / 'anomaly_model_iforest_v2.joblib',  # fallback kalau Root Directory salah
 ]
 MODEL_CANDIDATES = [p for p in MODEL_CANDIDATES if p]
 
@@ -295,8 +302,7 @@ LOG_FMT = "[%(levelname)-8s] %(asctime)s | warnetix | %(message)s"
 logging.basicConfig(level=logging.INFO, format=LOG_FMT, datefmt="%Y-%m-%d %H:%M:%S")
 log = logging.getLogger("warnetix")
 
-# ===== CORS =====
-app.middleware_stack = None  # reset stack sebelum re-add CORS (aman di reload)
+# ===== CORS =====  # reset stack sebelum re-add CORS (aman di reload)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[FRONTEND_ORIGIN] if FRONTEND_ORIGIN != "*" else ["*"],
@@ -835,6 +841,36 @@ async def sse_event_generator():
             last_hb = time.time()
 
 # ===== routes =====
+@app.get("/__debug/model")
+def __debug_model():
+    try:
+        info = {
+            "python": platform.python_version(),
+            "sklearn": getattr(sklearn, "__version__", None),
+            "cwd": os.getcwd(),
+            "model_path": str(ANOM_PATH),
+            "model_exists": ANOM_PATH.exists(),
+            "model_size": (ANOM_PATH.stat().st_size if ANOM_PATH.exists() else None),
+            "loaded": getattr(app.state, "anom_model", None) is not None,
+            "features": getattr(app.state, "anom_features", []),
+            "models_dir": [],
+        }
+        mdir = Path("models")
+        if mdir.exists():
+            info["models_dir"] = [p.name for p in mdir.iterdir() if p.is_file()]
+
+        if ANOM_PATH.exists():
+            h = hashlib.sha256()
+            with open(ANOM_PATH, "rb") as f:
+                for chunk in iter(lambda: f.read(8192), b""):
+                    h.update(chunk)
+            info["model_sha256"] = h.hexdigest()
+
+        return info  # <-- unindent ke luar IF supaya selalu return
+    except Exception as e:
+        return {"error": str(e)}
+
+
 @app.get("/health")
 def health():
     return {
