@@ -7,7 +7,7 @@ const r = (...p) => resolve(process.cwd(), ...p);
 export default defineConfig({
   plugins: [react()],
 
-  // Entry html kamu ada di sini
+  // Entry html ada di sini
   root: r("public/src"),
 
   build: {
@@ -16,13 +16,19 @@ export default defineConfig({
     rollupOptions: {
       input: {
         main:   r("public/src/index.html"),
-        upload: r("public/simple_upload.html"), // -> /simple_upload.html di produksi
+        upload: r("public/simple_upload.html"), // -> /simple_upload.html
       },
     },
   },
 
   server: { port: 5173, strictPort: true },
 
-  // Karena root = public/src, kita matiin publicDir default (kita deklarasi manual di atas)
+  // Matikan pencarian PostCSS config eksternal: gunakan config kosong
+  css: {
+    postcss: {
+      plugins: [],   // ⬅⬅⬅ ini bikin Vite berhenti nyari .postcssrc di luar
+    },
+  },
+
   publicDir: false,
 });
