@@ -9,11 +9,14 @@ load_dotenv()
 from fastapi import FastAPI
 from db import migrate, connect, insert_event, vt_cache_get, vt_cache_put
 from db import signature_lookup, upsert_signature  # helper signature DB (MBZ/Kaggle)
+from fastapi import Header, HTTPException, Depends
+
 
 app = FastAPI(title="Warnetix Scanner API", version="3.2.5")
 # ---- DEBUG & GUARD ----
 from fastapi.responses import JSONResponse, StreamingResponse, PlainTextResponse
 import traceback
+import json
 
 @app.middleware("http")
 async def _catch_all_errors(request, call_next):
@@ -39,79 +42,142 @@ CONN = None
 from pathlib import Path
 import os, platform, hashlib
 import sklearn
+import asyncio
 DEFAULT_MODEL_PATH = Path(__file__).resolve().parent / "models" / "anomaly_model_iforest_v2.joblib"
 ANOM_PATH = Path(os.getenv("ANOMALY_MODEL_PATH", str(DEFAULT_MODEL_PATH)))
 @app.on_event("startup")
 async def _startup():
     """
-    Startup awal: migrasi + konek DB, dan (BARU) load model anomaly v2 ke app.state.*
+    Startup cepat: migrate + konek DB (sinkron, cepat), 
+    lalu load anomaly model v2 di background supaya /health siap duluan.
     """
     global CONN
-    migrate()
-    CONN = connect()
-    app.state.db = CONN
-    print("[DB] EventsDB connected.")
-    print(f"[AI] CWD={os.getcwd()} ANOM_PATH={ANOM_PATH} exists={ANOM_PATH.exists()}")
-    print(f"[AI] sklearn={sklearn.__version__} | ANOM_PATH={ANOM_PATH} | exists={ANOM_PATH.exists()}")
-    if ANOM_PATH.exists():
-        h = hashlib.sha256()
-        with open(ANOM_PATH, "rb") as f:
-            for chunk in iter(lambda: f.read(8192), b""):
-                h.update(chunk)
-        print(f"[AI] model_sha256={h.hexdigest()} size={ANOM_PATH.stat().st_size}")
-    else:
-        print(f"[AI] model_missing at {ANOM_PATH}")
+    # --- DB cepat ---
+    try:
+        migrate()
+        CONN = connect()
+        app.state.db = CONN
+        print("[DB] EventsDB connected.")
+    except Exception as e:
+        print(f"[DB] connect/migrate error: {e}")
+
+    # --- log ringan (tidak nge-block) ---
+    try:
+        print(f"[AI] CWD={os.getcwd()} ANOM_PATH={ANOM_PATH} exists={ANOM_PATH.exists()}")
+        import sklearn
+        print(f"[AI] sklearn={sklearn.__version__}")
+    except Exception:
+        pass
+
+    # --- load model AI di background ---
+    async def _bg_load():
+        from joblib import load as joblib_load
+        try:
+            if ANOM_PATH.exists():
+                # jalankan joblib.load di thread pool agar non-blocking event loop
+                def _load():
+                    art = joblib_load(ANOM_PATH)
+                    feats = None
+                    # cari daftar fitur
+                    if isinstance(art, dict):
+                        feats = art.get("features")
+                        if feats is None:
+                            mdl = art.get("model")
+                            if hasattr(mdl, "feature_names_in_"):
+                                feats = list(mdl.feature_names_in_)
+                    else:
+                        if hasattr(art, "feature_names_in_"):
+                            feats = list(art.feature_names_in_)
+                        elif hasattr(art, "steps") and art.steps and hasattr(art.steps[-1][1], "feature_names_in_"):
+                            feats = list(art.steps[-1][1].feature_names_in_)
+                    return art, feats
+
+                art, feats = await asyncio.to_thread(_load)
+                app.state.anom_model = art
+                app.state.anom_features = feats or [
+                    "size_kb", "entropy", "string_count", "spec_char_ratio", "import_count", "macro_score"
+                ]
+                print(f"[AI] Anomaly model loaded (bg): {ANOM_PATH.name}")
+            else:
+                app.state.anom_model = None
+                app.state.anom_features = ["size_kb","entropy","string_count","spec_char_ratio","import_count","macro_score"]
+                print("[AI] Anomaly model not found, AI disabled.")
+        except Exception as e:
+            app.state.anom_model = None
+            app.state.anom_features = ["size_kb","entropy","string_count","spec_char_ratio","import_count","macro_score"]
+            print(f"[AI] Failed loading anomaly model (bg): {e}")
+
+    # jadwalkan supaya /health bisa langsung jalan
+    asyncio.create_task(_bg_load())
+
 
     # === [AI BLOCK #2] — load anomaly model (IsolationForest v2) ===
     # Model bisa berupa:
     # - dict {"model": estimator, "features": [...]} (bundle)
     # - pipeline/estimator joblib dengan attribute feature_names_in_ / steps[-1][1].feature_names_in_
+    @app.on_event("startup")
+    async def _startup():
+        """
+        Startup cepat: migrate + konek DB (sinkron, cepat),
+        lalu load anomaly model v2 di background supaya /health siap duluan.
+        """
+        global CONN
+    # --- DB cepat ---
     try:
-        from joblib import load as joblib_load  # lazy import biar cepat
-        import numpy as np  # untuk _ai_score di bawah
-        app.state.np = np  # simpan sekalian (dipakai _ai_score)
-
-        if ANOM_PATH.exists():
-            art = joblib_load(ANOM_PATH)
-            app.state.anom_model = art
-            feats = None
-
-            # cari fitur
-            if isinstance(art, dict):
-                feats = art.get("features")
-                if feats is None:
-                    mdl = art.get("model")
-                    if hasattr(mdl, "feature_names_in_"):
-                        feats = list(mdl.feature_names_in_)
-            else:
-                if hasattr(art, "feature_names_in_"):
-                    feats = list(art.feature_names_in_)
-                elif hasattr(art, "steps") and len(art.steps) and hasattr(art.steps[-1][1], "feature_names_in_"):
-                    feats = list(art.steps[-1][1].feature_names_in_)
-
-            # default fallback (6 fitur generik)
-            app.state.anom_features = feats or [
-                "size_kb", "entropy", "string_count", "spec_char_ratio", "import_count", "macro_score"
-            ]
-            print(f"[AI] Anomaly model loaded: {ANOM_PATH.name} features={app.state.anom_features}")
-        else:
-            app.state.anom_model = None
-            app.state.anom_features = ["size_kb","entropy","string_count","spec_char_ratio","import_count","macro_score"]
-            print("[AI] Anomaly model not found, AI disabled.")
+        migrate()
+        CONN = connect()
+        app.state.db = CONN
+        print("[DB] EventsDB connected.")
     except Exception as e:
-        app.state.anom_model = None
-        app.state.anom_features = ["size_kb","entropy","string_count","spec_char_ratio","import_count","macro_score"]
-        print("[AI] Failed loading anomaly model:", repr(e))
+        print(f"[DB] connect/migrate error: {e}")
 
-@app.on_event("shutdown")
-async def _shutdown():
-    global CONN
+    # --- log ringan ---
     try:
-        if CONN:
-            CONN.close()
-            print("[DB] EventsDB closed.")
+        print(f"[AI] CWD={os.getcwd()}  ANOM_PATH={ANOM_PATH}  exists={ANOM_PATH.exists()}")
+        import sklearn
+        print(f"[AI] sklearn={sklearn.__version__}")
     except Exception:
         pass
+
+    # --- loader model non-blocking di background saja ---
+    async def _bg_load():
+        from joblib import load as joblib_load
+        try:
+            if ANOM_PATH.exists():
+                # optional: sha256 + size logging
+                h = hashlib.sha256()
+                with open(ANOM_PATH, "rb") as f:
+                    for chunk in iter(lambda: f.read(8192), b""):
+                        h.update(chunk)
+                print(f"[AI] model file sha256={h.hexdigest()} size={ANOM_PATH.stat().st_size}")
+
+                def _load():
+                    art = joblib_load(ANOM_PATH)
+                    feats = None
+                    if isinstance(art, dict):
+                        feats = art.get("features") or (hasattr(art.get("model"), "feature_names_in_") and list(art["model"].feature_names_in_) or None)
+                    else:
+                        if hasattr(art, "feature_names_in_"):
+                            feats = list(art.feature_names_in_)
+                        elif hasattr(art, "steps") and art.steps and hasattr(art.steps[-1][1], "feature_names_in_"):
+                            feats = list(art.steps[-1][1].feature_names_in_)
+                    return art, feats
+
+                art, feats = await asyncio.to_thread(_load)
+                app.state.anom_model = art
+                app.state.anom_features = feats or ["size_kb","entropy","string_count","spec_char_ratio","import_count","macro_score"]
+                print(f"[AI] Anomaly model loaded (bg): {ANOM_PATH.name}")
+            else:
+                app.state.anom_model = None
+                app.state.anom_features = ["size_kb","entropy","string_count","spec_char_ratio","import_count","macro_score"]
+                print(f"[AI] Anomaly model not found at {ANOM_PATH}, AI disabled.")
+        except Exception as e:
+            app.state.anom_model = None
+            app.state.anom_features = ["size_kb","entropy","string_count","spec_char_ratio","import_count","macro_score"]
+            print(f"[AI] Failed loading anomaly model (bg): {e}")
+
+    asyncio.create_task(_bg_load())
+
 
 # ===== standard imports =====
 import hashlib
@@ -312,8 +378,8 @@ OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 # ===== Action Policy =====
 QUARANTINE_DIR = PROJ / "quarantine"
 QUARANTINE_DIR.mkdir(parents=True, exist_ok=True)
-POLICY_MODE = os.getenv("WARNETIX_POLICY", "simulate").lower()          # simulate | rename | quarantine
-POLICY_MIN_SEVERITY = os.getenv("WARNETIX_POLICY_MIN", "high").lower()  # low | medium | high | critical
+POLICY_MODE = globals().get("POLICY_MODE", os.getenv("POLICY_MODE", "monitor"))
+POLICY_MIN_SEVERITY = globals().get("POLICY_MIN_SEVERITY", int(os.getenv("POLICY_MIN_SEVERITY", "2")))
 _SEV_ORDER = {"low": 0, "medium": 1, "high": 2, "critical": 3}
 def _sev_ge(a: str, b: str) -> bool:
     return _SEV_ORDER.get(a, 0) >= _SEV_ORDER.get(b, 0)
@@ -848,6 +914,20 @@ def _on_stop() -> None:
     AUTOSCAN.stop()
     log.info("AutoScan worker stopped.")
 
+def require_agent(authorization: str = Header(None)):
+    """
+    Wajibkan header Authorization: Bearer <token> untuk endpoint agen.
+    Kalau AGENT_TOKEN kosong (belum diset), proteksi dimatikan otomatis.
+    """
+    if not AGENT_TOKEN:
+        return
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(401, "Missing Bearer token")
+    token = authorization.split(" ", 1)[1].strip()
+    if token != AGENT_TOKEN:
+        raise HTTPException(403, "Invalid token")
+    return
+
 async def sse_event_generator():
     last_hb = time.time()
     loop = asyncio.get_event_loop()
@@ -862,9 +942,40 @@ async def sse_event_generator():
             last_hb = time.time()
 
 # ===== routes =====
-@app.get("/__debug/ping")
-def _dbg_ping():
-    return {"ok": True}
+@app.post("/agent/ingest")
+def agent_ingest(evt: dict, _: None = Depends(require_agent)):
+    """
+    Agent POST JSON ke sini. Simpan ke DB, dan (opsional) push ke SSE.
+    Contoh payload agent:
+    {
+      "host":"PC-01",
+      "path":"C:\\temp\\abc.exe",
+      "sha256":"...",
+      "result":{"verdict":"malicious","score":0.91},
+      "ts":"2025-08-31T20:10:00Z"
+    }
+    """
+    try:
+        # Simpan ke DB kamu (ubah sesuai helper yang kamu punya)
+        # mis: insert_event(CONN, host, path, sha256, verdict, score, ts, source="agent")
+        host    = evt.get("host") or "unknown"
+        path    = evt.get("path")
+        sha256  = evt.get("sha256")
+        res     = evt.get("result") or {}
+        verdict = res.get("verdict", "unknown")
+        score   = float(res.get("score", 0.0))
+        ts      = evt.get("ts")
+
+        insert_event(app.state.db, host, path, sha256, verdict, score, ts, source="agent")
+
+        # (opsional) kirim ke subscriber SSE kalau kamu punya queue/stream
+        # await sse_bus.publish(evt)  # kalau kamu implement event bus
+
+        return {"ok": True}
+    except Exception as e:
+        print("[AGENT-INGEST-ERR]", e)
+        raise HTTPException(400, str(e))
+
 
 @app.get("/__debug/model-lite")
 def _dbg_model_lite():
@@ -885,19 +996,51 @@ def _dbg_model_lite():
         return JSONResponse(info)
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=200)
+from datetime import datetime
+
+# fallback aman kalau env / konstanta belum ada
+POLICY_MODE = globals().get("POLICY_MODE", os.getenv("POLICY_MODE", "monitor"))
+POLICY_MIN_SEVERITY = globals().get("POLICY_MIN_SEVERITY", int(os.getenv("POLICY_MIN_SEVERITY", "2")))
+VT_CLIENT = globals().get("VT_CLIENT", None)
+WATCHER = globals().get("WATCHER", None)
 
 @app.get("/health")
 def health():
+    # status model dari 2 sumber: objek global ANOM & app.state.*
+    anom_loaded_global = False
+    anom_path = None
+    try:
+        anom_loaded_global = bool(ANOM.available())
+        anom_path = str(ANOM.path) if getattr(ANOM, "path", None) else None
+    except Exception:
+        pass
+
+    anom_loaded_state = bool(getattr(app.state, "anom_model", None))
+
+    # watcher status kalau ada
+    try:
+        watch_status = WATCHER.status() if WATCHER and hasattr(WATCHER, "status") else {"running": True}
+    except Exception:
+        watch_status = {"running": False}
+
     return {
         "status": "ok",
-        "model_loaded": ANOM.available(),
-        "model_path": str(ANOM.path) if ANOM.path else None,
+        "time": datetime.utcnow().isoformat() + "Z",
+
+        # AI model
+        "model_loaded": anom_loaded_global or anom_loaded_state,
+        "model_loaded_global": anom_loaded_global,
+        "model_loaded_state": anom_loaded_state,
+        "model_path": anom_path,
+
+        # Integrations
         "vt_enabled": bool(VT_CLIENT),
         "signatures": {"ransomware": True, "malware": True, "phishing": True},
-        "watch": getattr(WATCHER, "status", lambda: {"running": True})(),
+        "watch": watch_status,
         "autoscan": {"running": True},
+
+        # policy
         "policy": {"mode": POLICY_MODE, "min_severity": POLICY_MIN_SEVERITY},
-        "time": datetime.utcnow().isoformat() + "Z",
     }
 
 @app.get("/events/stream")
