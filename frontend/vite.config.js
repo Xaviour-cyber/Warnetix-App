@@ -2,34 +2,27 @@
 import react from "@vitejs/plugin-react";
 import { resolve } from "path";
 
-// ABSOLUTE PATH helper
 const r = (...p) => resolve(process.cwd(), ...p);
 
 export default defineConfig({
   plugins: [react()],
 
-  // >>>> Penting: root kita adalah 'public/src' karena index.html ada di situ
+  // Entry html kamu ada di sini
   root: r("public/src"),
 
-  // Multi-page build: ikutkan simple_upload.html juga
   build: {
-    outDir: r("dist"),       // output ke frontend/dist
+    outDir: r("dist"),
     emptyOutDir: true,
     rollupOptions: {
       input: {
-        main: r("public/src/index.html"),
-        upload: r("public/simple_upload.html"), // ==> akan jadi /simple_upload.html
+        main:   r("public/src/index.html"),
+        upload: r("public/simple_upload.html"), // -> /simple_upload.html di produksi
       },
     },
   },
 
-  // Dev server (opsional)
-  server: {
-    port: 5173,
-    strictPort: true,
-  },
+  server: { port: 5173, strictPort: true },
 
-  // Karena root = public/src, kita matikan publicDir default
-  // (kita eksplisit daftarkan simple_upload lewat rollupOptions.input)
+  // Karena root = public/src, kita matiin publicDir default (kita deklarasi manual di atas)
   publicDir: false,
 });
