@@ -1,3 +1,4 @@
+
 # scanner_api.py — Warnetix (FINAL w/ offline signature DB lookup + SSE signature_hit + AI loader in startup)
 from __future__ import annotations
 from typing import Any, Dict, List
@@ -14,8 +15,9 @@ CONN = None
 
 # === [AI BLOCK #1] — lokasi model v2 yang kamu minta ===
 from pathlib import Path
-ANOM_PATH = Path("backend/scanner_core/models/anomaly_iforest.joblib")  # kamu bisa ganti jalur ini kapan saja
-
+from pathlib import Path
+DEFAULT_MODEL_PATH = (Path(__file__).resolve().parent / 'models' / 'anomaly_model_iforest_v2.joblib')
+ANOM_PATH = Path(os.getenv('ANOMALY_MODEL_PATH', str(DEFAULT_MODEL_PATH)))
 @app.on_event("startup")
 async def _startup():
     """
@@ -26,6 +28,7 @@ async def _startup():
     CONN = connect()
     app.state.db = CONN
     print("[DB] EventsDB connected.")
+    print(f"[AI] CWD={os.getcwd()} ANOM_PATH={ANOM_PATH} exists={ANOM_PATH.exists()}")
 
     # === [AI BLOCK #2] — load anomaly model (IsolationForest v2) ===
     # Model bisa berupa:
@@ -247,7 +250,7 @@ except Exception:
                 return [{"t": k, **res[k]} for k in sorted(res.keys())]
 
 # ===== paths & env =====
-ROOT = Path(__file__).resolve().parents[1]   # .../backend
+ROOT = Path(__file__).resolve().parent   # .../backend
 PROJ = ROOT.parent                           # project root
 load_dotenv(PROJ / ".env")
 
@@ -262,10 +265,14 @@ SIG_PHISH = SIGN_DIR / "phishing_signatures.json"
 
 # kandidat model lama (AnomalyModel) — tetap dipakai oleh scan_single_file
 MODEL_CANDIDATES = [
-    ROOT / "scanner_core" / "models" / "anomaly_model_iforest_v2.joblib",
-    ROOT / "scanner_core" / "anomaly_model_iforest_v2.joblib",
-    PROJ / "backend" / "sample_files" / "anomaly_model_iforest_v2.joblib",
+    Path(os.getenv('ANOMALY_MODEL_PATH')).resolve() if os.getenv('ANOMALY_MODEL_PATH') else None,
+    ROOT / 'models' / 'anomaly_model_iforest_v2.joblib',
+    ROOT / 'scanner_core' / 'models' / 'anomaly_model_iforest_v2.joblib',
+    ROOT / 'scanner_core' / 'anomaly_model_iforest_v2.joblib',
+    PROJ / 'backend' / 'sample_files' / 'anomaly_model_iforest_v2.joblib',
 ]
+MODEL_CANDIDATES = [p for p in MODEL_CANDIDATES if p]
+
 
 UPLOADS_DIR = PROJ / "uploads"
 OUTPUT_DIR = PROJ / "data" / "output"
@@ -438,18 +445,33 @@ class AnomalyModel:
         self.path: Optional[Path] = None
 
         for c in MODEL_CANDIDATES:
-            if c.exists():
-                try:
+            try:
+                if c.exists():
                     art = joblib_load(c)
-                    self.model = art["model"]
-                    self.features = art["features"]
-                    self.scaler_mean = np.array(art["scaler_mean"])
-                    self.scaler_scale = np.array(art["scaler_scale"])
+                    if isinstance(art, dict) and "model" in art:
+                        self.model = art["model"]
+                        feats = art.get("features")
+                        if feats is None and hasattr(self.model, "feature_names_in_"):
+                            feats = list(self.model.feature_names_in_)
+                        self.features = list(feats or [])
+                        try:
+                            self.scaler_mean = np.array(art.get("scaler_mean")) if art.get("scaler_mean") is not None else None
+                            self.scaler_scale = np.array(art.get("scaler_scale")) if art.get("scaler_scale") is not None else None
+                        except Exception:
+                            self.scaler_mean = self.scaler_scale = None
+                    else:
+                        self.model = art
+                        if hasattr(self.model, "feature_names_in_"):
+                            self.features = list(self.model.feature_names_in_)
+                        elif hasattr(self.model, "steps") and self.model.steps:
+                            last = self.model.steps[-1][1]
+                            if hasattr(last, "feature_names_in_"):
+                                self.features = list(last.feature_names_in_)
                     self.path = c
                     log.info(f"Anomaly model loaded: {c}")
                     break
-                except Exception as e:
-                    log.warning(f"Failed load model {c}: {e}")
+            except Exception as e:
+                log.warning(f"Failed load model {c}: {e}")
         if not self.model:
             log.warning("Anomaly model not found, AI disabled.")
 
@@ -459,11 +481,21 @@ class AnomalyModel:
     def predict(self, feat: Dict[str, float]) -> Tuple[int, float]:
         if not self.available():
             return 0, 0.0
-        x = np.array([feat.get(f, 0.0) for f in self.features]).reshape(1, -1)
-        x = (x - self.scaler_mean) / (self.scaler_scale + 1e-12)
-        pred = self.model.predict(x)[0]                  # -1 anomaly, 1 normal
-        raw = float(self.model.decision_function(x)[0])  # besar=normal
-        return (1 if pred == -1 else 0), raw
+        try:
+            vec = [float(feat.get(f, 0.0)) for f in (self.features or ["size_kb","entropy","string_count","spec_char_ratio","import_count","macro_score"])]
+            x = np.array(vec, dtype="float64").reshape(1, -1)
+            if self.scaler_mean is not None and self.scaler_scale is not None:
+                x = (x - self.scaler_mean) / (self.scaler_scale + 1e-12)
+            pred = self.model.predict(x)[0]
+            if hasattr(self.model, "decision_function"):
+                raw = float(self.model.decision_function(x)[0])
+            elif hasattr(self.model, "score_samples"):
+                raw = float(self.model.score_samples(x)[0])
+            else:
+                raw = 0.0
+            return (1 if int(pred) == -1 else 0), raw
+        except Exception:
+            return 0, 0.0
 
 ANOM = AnomalyModel()
 
@@ -528,6 +560,13 @@ def extract_features(path: Path) -> Dict[str, Any]:
         "is_script": float(ext in {".js", ".vbs", ".bat", ".ps1", ".sh", ".py"}),
         "mime_is_pdf": float(mime == "application/pdf"),
     }
+
+    # Aliases for older models
+    feat.setdefault("size_kb", feat.get("filesize_kb", 0.0))
+    feat.setdefault("string_count", float(len(text_snippet)))
+    feat.setdefault("spec_char_ratio", 0.0)
+    feat.setdefault("import_count", 0.0)
+    feat.setdefault("macro_score", 0.0)
     return {
         "path": str(path),
         "name": path.name,
@@ -802,7 +841,7 @@ def health():
         "model_path": str(ANOM.path) if ANOM.path else None,
         "vt_enabled": bool(VT_CLIENT),
         "signatures": {"ransomware": True, "malware": True, "phishing": True},
-        "watch": WATCHER.status(),
+        "watch": getattr(WATCHER, "status", lambda: {"running": True})(),
         "autoscan": {"running": True},
         "policy": {"mode": POLICY_MODE, "min_severity": POLICY_MIN_SEVERITY},
         "time": datetime.utcnow().isoformat() + "Z",
