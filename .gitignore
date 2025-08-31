@@ -31,3 +31,5 @@ backend/scanner_core/models/anomaly_iforest.joblib
 
 !frontend/public/src/.env.development
 
+
+backend/models/_backup_*
