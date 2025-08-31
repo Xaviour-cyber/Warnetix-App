@@ -17,6 +17,7 @@ CONN = None
 from pathlib import Path
 from pathlib import Path
 import os
+import sklearn
 DEFAULT_MODEL_PATH = Path(__file__).resolve().parent / "models" / "anomaly_model_iforest_v2.joblib"
 ANOM_PATH = Path(os.getenv("ANOMALY_MODEL_PATH", str(DEFAULT_MODEL_PATH)))
 @app.on_event("startup")
@@ -30,6 +31,7 @@ async def _startup():
     app.state.db = CONN
     print("[DB] EventsDB connected.")
     print(f"[AI] CWD={os.getcwd()} ANOM_PATH={ANOM_PATH} exists={ANOM_PATH.exists()}")
+    print(f"[AI] sklearn={sklearn.__version__} | ANOM_PATH={ANOM_PATH} | exists={ANOM_PATH.exists()}")
 
     # === [AI BLOCK #2] — load anomaly model (IsolationForest v2) ===
     # Model bisa berupa:
