@@ -226,3 +226,22 @@ export default {
   openEventStream,
   severityNorm, classForSeverity, actionNorm, formatRelTime, extFromPath
 };
+
+const BASE = import.meta.env.VITE_API_BASE?.replace(/\/$/, "") || "";
+
+async function _fetchJSON(path, opts = {}, timeoutMs = 8000) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const res = await fetch(`${BASE}${path}`, { ...opts, signal: ctrl.signal });
+    if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+    return await res.json();
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+export const api = {
+  health: () => _fetchJSON("/health"),
+  // tambahkan call lain di sini
+};
