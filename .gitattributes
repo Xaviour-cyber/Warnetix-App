@@ -3,6 +3,9 @@
 *.pkl filter=lfs diff=lfs merge=lfs -text
 *.job filter=lfs diff=lfs merge=lfs -text
 *.pt filter=lfs diff=lfs merge=lfs -text
+*.joblib binary -text
+*.pkl    binary -text
+*.npy    binary -text
 *.pkl !text !filter !merge !diff
 *.onnx !text !filter !merge !diff
 *.bin !text !filter !merge !diff
