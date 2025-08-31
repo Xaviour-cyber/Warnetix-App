@@ -2,7 +2,7 @@
 FROM node:20-alpine AS build
 WORKDIR /app
 
-# deps FE (di src)
+# deps dari folder React
 COPY frontend/public/src/package*.json ./
 RUN if [ -f package-lock.json ]; then \
       npm ci --no-audit --no-fund; \
@@ -10,17 +10,23 @@ RUN if [ -f package-lock.json ]; then \
       npm install --no-audit --no-fund; \
     fi
 
-# bawa seluruh source FE
+# source React lengkap (index.html, main.jsx, vite.config.js, src/, components/, pages/, public/, dll)
 COPY frontend/public/src/ ./
+
+# build
 RUN npm run build
 
 # ---------- Runtime (nginx) ----------
 FROM nginx:alpine
 WORKDIR /usr/share/nginx/html
+
+# hasil build
 COPY --from=build /app/dist ./
+
+# config SPA
 COPY frontend/nginx.conf /etc/nginx/conf.d/default.conf
 
-# fallback opsional utk /simple_upload.html
+# fallback lama untuk /simple_upload.html kalau tidak ada di dist
 RUN [ -f simple_upload.html ] || cp index.html simple_upload.html
 
 EXPOSE 80
